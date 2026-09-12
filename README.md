@@ -52,7 +52,7 @@ Current defaults:
 - Microphone input device: `AUDIO_DEVICE = 2`
 - Speaker playback device: `PLAYBACK_DEVICE = "plughw:2,0"`
 - ALSA volume card/control in `play_audio.py`: card `2`, control `PCM`, volume `85%`
-- Wake word: `hello`
+- Wake words/phrases: `hello jarvis`, `hey jarvis`, `hello computer`, `hey computer`, `jarvis`, `computer`, `hello`
 - Agent API: `http://192.168.1.82:1235/v1/agents/jarvis`
 - Vosk model: `/home/jarvis/jarvis/runtime/assets/vosk-model-small-en-us-0.15`
 - Piper voice model: `/home/jarvis/jarvis/runtime/assets/piper/en_US-amy-medium.onnx`
@@ -90,11 +90,11 @@ Expected startup output includes:
 ```text
 Loading Vosk model...
 Jarvis voice loop running.
-Say one of these to wake: hello
+Say one of these to wake: hello jarvis, hey jarvis, hello computer, hey computer, jarvis, computer, hello
 Press Ctrl+C to stop.
 ```
 
-Say `hello`, wait for the prompt, then speak a command. Press `Ctrl+C` to stop.
+Say one of the configured wake words or phrases, wait for the prompt, then speak a command. Press `Ctrl+C` to stop.
 
 ## Start on Boot
 

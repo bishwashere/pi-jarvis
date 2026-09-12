@@ -14,8 +14,16 @@ VOSK_MODEL_PATH = "/home/jarvis/jarvis/runtime/assets/vosk-model-small-en-us-0.1
 # ---------- Wake word ----------
 
 # For now, we are using Vosk based wake detection.
-# "hello" works better than "jarvis" with the small Vosk model.
-WAKE_WORDS = ["hello"]
+# Keep longer phrases before shorter words so command cleanup works well.
+WAKE_WORDS = [
+    "hello jarvis",
+    "hey jarvis",
+    "hello computer",
+    "hey computer",
+    "jarvis",
+    "computer",
+    "hello",
+]
 
 
 # ---------- Local AI API ----------
