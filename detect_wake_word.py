@@ -3,12 +3,22 @@ import time
 
 from vosk import KaldiRecognizer
 
-from config import DUPLICATE_WAKE_SECONDS, SAMPLE_RATE, WAKE_WORDS
+from config import (
+    DUPLICATE_WAKE_SECONDS,
+    LENIENT_WAKE_PARTIALS,
+    SAMPLE_RATE,
+    WAKE_WORDS,
+)
+
+
+def normalize_text(text: str) -> str:
+    return " ".join(text.lower().strip().split())
 
 
 def has_wake_word(text: str) -> bool:
-    heard = text.lower().strip()
-    return any(wake in heard for wake in WAKE_WORDS)
+    heard = normalize_text(text)
+    wake_phrases = [*WAKE_WORDS, *LENIENT_WAKE_PARTIALS]
+    return any(wake in heard for wake in wake_phrases)
 
 
 class WakeWordMonitor:

@@ -13,6 +13,7 @@ from config import (
     GENERIC_ERROR_REPLY,
     HEALTH_ERROR_REPLY,
     HEALTH_OK_REPLY,
+    LENIENT_WAKE_PARTIALS,
     LISTEN_AGAIN_REPLY,
     MAX_COMMAND_SECONDS,
     VOSK_MODEL_PATH,
@@ -135,6 +136,7 @@ def run_assistant():
 
     print("Jarvis voice loop running.")
     print(f'Say one of these to wake: {", ".join(WAKE_WORDS)}')
+    print(f'Lenient wake partials: {", ".join(LENIENT_WAKE_PARTIALS)}')
     print("Press Ctrl+C to stop.")
 
     try:

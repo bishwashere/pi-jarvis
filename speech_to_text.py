@@ -4,7 +4,7 @@ import time
 
 from vosk import KaldiRecognizer
 
-from config import MAX_COMMAND_SECONDS, SAMPLE_RATE, WAKE_WORDS
+from config import LENIENT_WAKE_PARTIALS, MAX_COMMAND_SECONDS, SAMPLE_RATE, WAKE_WORDS
 from detect_wake_word import has_wake_word
 from interruptions import WakeWordInterrupted
 from listen_to_mic import audio_queue, clear_audio_queue, open_microphone_stream
@@ -12,7 +12,12 @@ from listen_to_mic import audio_queue, clear_audio_queue, open_microphone_stream
 
 def remove_wake_words(text: str) -> str:
     cleaned = text.lower().strip()
-    for wake in WAKE_WORDS:
+    wake_phrases = sorted(
+        [*WAKE_WORDS, *LENIENT_WAKE_PARTIALS],
+        key=len,
+        reverse=True,
+    )
+    for wake in wake_phrases:
         cleaned = cleaned.replace(wake, " ")
     return " ".join(cleaned.split())
 

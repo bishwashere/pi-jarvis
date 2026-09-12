@@ -25,6 +25,17 @@ WAKE_WORDS = [
     "hello",
 ]
 
+# Extra Vosk mis-hearings that should still wake Jarvis.
+# These are substring matches, so keep them specific enough to avoid false wakes.
+LENIENT_WAKE_PARTIALS = [
+    "he does",
+    "his i was",
+    "hey service",
+    "hello service",
+    "hey jars",
+    "hello jars",
+]
+
 
 # ---------- Local AI API ----------
 

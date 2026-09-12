@@ -53,6 +53,7 @@ Current defaults:
 - Speaker playback device: `PLAYBACK_DEVICE = "plughw:2,0"`
 - ALSA volume card/control in `play_audio.py`: card `2`, control `PCM`, volume `85%`
 - Wake words/phrases: `hello jarvis`, `hey jarvis`, `hello computer`, `hey computer`, `jarvis`, `computer`, `hello`
+- Lenient wake partials for Vosk mis-hearings: `he does`, `his i was`, `hey service`, `hello service`, `hey jars`, `hello jars`
 - Initial command listen window: `60` seconds, with an earlier stop after speech followed by a short silence.
 - Follow-up listen window after an answer: `4` seconds.
 - Agent API: `http://192.168.1.82:1235/v1/agents/jarvis`
@@ -93,6 +94,7 @@ Expected startup output includes:
 Loading Vosk model...
 Jarvis voice loop running.
 Say one of these to wake: hello jarvis, hey jarvis, hello computer, hey computer, jarvis, computer, hello
+Lenient wake partials: he does, his i was, hey service, hello service, hey jars, hello jars
 Press Ctrl+C to stop.
 ```
 
