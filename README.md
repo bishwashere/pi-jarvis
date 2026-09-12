@@ -53,6 +53,8 @@ Current defaults:
 - Speaker playback device: `PLAYBACK_DEVICE = "plughw:2,0"`
 - ALSA volume card/control in `play_audio.py`: card `2`, control `PCM`, volume `85%`
 - Wake words/phrases: `hello jarvis`, `hey jarvis`, `hello computer`, `hey computer`, `jarvis`, `computer`, `hello`
+- Initial command listen window: `60` seconds, with an earlier stop after speech followed by a short silence.
+- Follow-up listen window after an answer: `4` seconds.
 - Agent API: `http://192.168.1.82:1235/v1/agents/jarvis`
 - Vosk model: `/home/jarvis/jarvis/runtime/assets/vosk-model-small-en-us-0.15`
 - Piper voice model: `/home/jarvis/jarvis/runtime/assets/piper/en_US-amy-medium.onnx`

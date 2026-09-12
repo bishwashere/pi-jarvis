@@ -47,7 +47,7 @@ SYSTEM_PROMPT = (
 # ---------- Timing ----------
 
 # How long to listen for the first command after wake.
-MAX_COMMAND_SECONDS = 6
+MAX_COMMAND_SECONDS = 60
 
 # How long to listen after an answer for natural follow-up.
 FOLLOWUP_SECONDS = 4
