@@ -117,6 +117,21 @@ pgrep -af 'jarvis_voice.py|run_jarvis.sh'
 tail -n 80 /home/jarvis/jarvis/logs/jarvis_voice.log
 ```
 
+Follow the live log from `/home/jarvis/jarvis`:
+
+```sh
+tail -n 100 -f logs/jarvis_voice.log
+```
+
+The log includes what speech recognition heard, what was sent to the Pasture API, and what came back:
+
+```text
+Command: news headlines
+[2026-09-12T17:45:00] Pasture request: {'model': 'api-assistant', 'user': 'news headlines'}
+[2026-09-12T17:45:02] Pasture response: {'raw': '...', 'parsed': {'reply': '...', 'continue_listening': False}}
+Jarvis: ...
+```
+
 ## Quick Checks
 
 Check the agent API from the Pi:

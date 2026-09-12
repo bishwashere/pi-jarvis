@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 import requests
 
@@ -9,6 +10,11 @@ from config import (
     CONTINUE_LISTENING_DEFAULT,
     SYSTEM_PROMPT,
 )
+
+
+def log_api_event(label: str, value):
+    timestamp = datetime.now().isoformat(timespec="seconds")
+    print(f"[{timestamp}] Pasture {label}: {value}", flush=True)
 
 
 def parse_agent_reply(content: str) -> dict:
@@ -47,6 +53,8 @@ def parse_agent_reply(content: str) -> dict:
 
 
 def ask_pasture(user_text: str) -> dict:
+    log_api_event("request", {"model": API_MODEL, "user": user_text})
+
     response = requests.post(
         API_URL,
         headers={"Content-Type": "application/json"},
@@ -70,7 +78,9 @@ def ask_pasture(user_text: str) -> dict:
     data = response.json()
 
     content = data["choices"][0]["message"]["content"].strip()
-    return parse_agent_reply(content)
+    parsed = parse_agent_reply(content)
+    log_api_event("response", {"raw": content, "parsed": parsed})
+    return parsed
 
 
 def check_agent_health() -> bool:
