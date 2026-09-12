@@ -1,0 +1,8 @@
+.env
+.ssh_askpass
+.venv
+__pycache__/
+*.pyc
+logs/
+runtime/cache/
+runtime/venv/
