@@ -1,3 +1,5 @@
+import time
+
 import requests
 from vosk import Model
 
@@ -104,6 +106,7 @@ def handle_conversation(model):
 
         while True:
             listen_seconds = MAX_COMMAND_SECONDS if should_continue else FOLLOWUP_SECONDS
+            listen_started_at = time.time()
 
             try:
                 followup = listen_for_command(model, seconds=listen_seconds)
@@ -113,7 +116,12 @@ def handle_conversation(model):
                 break
 
             if not followup:
-                print("No follow-up. Returning to wake word mode.")
+                elapsed = time.time() - listen_started_at
+                print(
+                    f"No follow-up after {elapsed:.1f}s "
+                    f"(listen window: {listen_seconds}s). "
+                    "Returning to wake word mode."
+                )
                 command = ""
                 break
 

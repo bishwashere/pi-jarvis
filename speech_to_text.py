@@ -31,8 +31,9 @@ def listen_for_command(model, seconds: int = MAX_COMMAND_SECONDS, allow_wake_int
     last_speech_time = time.time()
     last_partial = ""
     final_parts = []
+    stop_reason = "listen window expired"
 
-    print("Listening for command...")
+    print(f"Listening for command for up to {seconds} seconds...")
 
     with open_microphone_stream():
         while time.time() - start < seconds:
@@ -49,6 +50,11 @@ def listen_for_command(model, seconds: int = MAX_COMMAND_SECONDS, allow_wake_int
                     if allow_wake_interrupt and has_wake_word(text):
                         command_after_wake = remove_wake_words(text)
                         if command_after_wake:
+                            elapsed = time.time() - start
+                            print(
+                                f"Stopped listening after {elapsed:.1f}s: "
+                                "wake phrase included command."
+                            )
                             return command_after_wake
                         raise WakeWordInterrupted()
 
@@ -67,6 +73,7 @@ def listen_for_command(model, seconds: int = MAX_COMMAND_SECONDS, allow_wake_int
                         raise WakeWordInterrupted()
 
             if final_parts and time.time() - last_speech_time > 0.7:
+                stop_reason = "speech followed by 0.7s silence"
                 break
 
     final = json.loads(recognizer.FinalResult()).get("text", "").strip()
@@ -74,7 +81,19 @@ def listen_for_command(model, seconds: int = MAX_COMMAND_SECONDS, allow_wake_int
     if final:
         final_parts.append(final)
 
+    elapsed = time.time() - start
+
     if not final_parts and last_partial:
+        print(
+            f"Stopped listening after {elapsed:.1f}s: "
+            f"{stop_reason}; using partial transcript."
+        )
         return last_partial
 
-    return " ".join(final_parts).strip()
+    command = " ".join(final_parts).strip()
+    if command:
+        print(f"Stopped listening after {elapsed:.1f}s: {stop_reason}.")
+    else:
+        print(f"Stopped listening after {elapsed:.1f}s: no speech heard.")
+
+    return command

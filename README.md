@@ -134,6 +134,9 @@ Command: news headlines
 [2026-09-12T17:45:00] Pasture request: {'model': 'api-assistant', 'user': 'news headlines'}
 [2026-09-12T17:45:02] Pasture response: {'raw': '...', 'parsed': {'reply': '...', 'continue_listening': False}}
 Jarvis: ...
+Listening for command for up to 4 seconds...
+Stopped listening after 4.0s: no speech heard.
+No follow-up after 4.0s (listen window: 4s). Returning to wake word mode.
 ```
 
 ## Quick Checks
