@@ -78,6 +78,13 @@ cd /home/jarvis/jarvis
 python jarvis_voice.py
 ```
 
+Or use the launcher script, which sets the venv path, writes logs, and uses a lock so duplicate Jarvis loops do not start:
+
+```sh
+cd /home/jarvis/jarvis
+./run_jarvis.sh
+```
+
 Expected startup output includes:
 
 ```text
@@ -88,6 +95,27 @@ Press Ctrl+C to stop.
 ```
 
 Say `hello`, wait for the prompt, then speak a command. Press `Ctrl+C` to stop.
+
+## Start on Boot
+
+Install an `@reboot` cron entry for the `jarvis` user:
+
+```sh
+(crontab -l 2>/dev/null; echo '@reboot sleep 20 && /home/jarvis/jarvis/run_jarvis.sh') | crontab -
+```
+
+Start it immediately with the same launcher:
+
+```sh
+nohup /home/jarvis/jarvis/run_jarvis.sh >/dev/null 2>&1 &
+```
+
+Check whether it is running:
+
+```sh
+pgrep -af 'jarvis_voice.py|run_jarvis.sh'
+tail -n 80 /home/jarvis/jarvis/logs/jarvis_voice.log
+```
 
 ## Quick Checks
 
