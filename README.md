@@ -13,9 +13,11 @@ Voice assistant runtime for a Raspberry Pi. It listens for a wake word, records 
 - `text_to_speech.py` and `play_audio.py` - Piper TTS and ALSA playback.
 - `runtime/assets/` - local Vosk and Piper model assets copied from the Pi.
 
-## Raspberry Pi Setup
+## 1. Installation
 
-From the Pi:
+### 1.1 Setting Up Python (Raspberry Pi, Mac, Windows)
+
+From the project directory. On the Raspberry Pi, that is:
 
 ```sh
 cd /home/jarvis/jarvis
@@ -43,7 +45,7 @@ The project expects the Piper executable to be available as `piper`:
 piper --help
 ```
 
-## Local Whisper Setup
+### 1.2 Local Whisper Setup
 
 Jarvis uses Vosk for wake detection and local `whisper.cpp` for command transcription. Install `whisper.cpp` outside this project directory:
 
@@ -77,7 +79,7 @@ And so my fellow Americans ask not what your country can do for you, ask what yo
 
 The `tiny.en` model is the smallest practical local Whisper model for this Pi. It is good for testing, but command transcription may still be slower than Vosk because Whisper records the whole command audio clip first, then transcribes it.
 
-## Configuration
+## 2. Configuration
 
 Edit `config.py` if your Pi hardware or API host changes.
 
@@ -110,7 +112,7 @@ amixer scontrols
 
 Jarvis validates that the chosen microphone supports the configured `SAMPLE_RATE` before opening it. If the USB microphone or speaker appears under a different card/device number, update `AUDIO_DEVICE`, `AUDIO_DEVICE_FALLBACKS`, `PLAYBACK_DEVICE`, `VOLUME_CARD`, and `VOLUME_CONTROL`.
 
-## Run
+## 3. Run
 
 Start the voice assistant:
 
@@ -142,7 +144,7 @@ Say one of the configured wake words or phrases, wait for the prompt, then speak
 
 In Whisper command mode, Jarvis records the command as `logs/command.wav`, waits for speech followed by silence or the configured timeout, transcribes the finished audio clip with local `whisper.cpp`, then sends the transcript to Pasture.
 
-## Start on Boot
+## 4. Start on Boot
 
 Install an `@reboot` cron entry for the `jarvis` user:
 
@@ -193,7 +195,7 @@ Whisper transcript after 3.3s: 'what is the weather today'
 Command: what is the weather today
 ```
 
-## Quick Checks
+## 5. Quick Checks
 
 Check the agent API from the Pi:
 
@@ -214,7 +216,7 @@ echo "Jarvis is online." | piper --model runtime/assets/piper/en_US-amy-medium.o
 aplay -D plughw:2,0 /tmp/jarvis-test.wav
 ```
 
-## Troubleshooting
+## 6. Troubleshooting
 
 - If startup fails with a Vosk model error, confirm `runtime/assets/vosk-model-small-en-us-0.15/` exists and matches `VOSK_MODEL_PATH`.
 - If command transcription fails with Whisper errors, confirm `/home/jarvis/whisper.cpp/build/bin/whisper-cli` and `/home/jarvis/whisper.cpp/models/ggml-tiny.en.bin` exist and match `WHISPER_CPP_BINARY` / `WHISPER_MODEL_PATH`.
