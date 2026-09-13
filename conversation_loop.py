@@ -8,15 +8,12 @@ from config import (
     API_ERROR_REPLY,
     API_RETRY_COUNT,
     API_RETRY_REPLY,
-    COMMAND_FAILED_REPLY,
     COMMAND_RETRY_COUNT,
-    DID_NOT_CATCH_REPLY,
     FOLLOWUP_SECONDS,
     GENERIC_ERROR_REPLY,
     HEALTH_ERROR_REPLY,
     HEALTH_OK_REPLY,
-    LENIENT_WAKE_PARTIALS,
-    LISTEN_AGAIN_REPLY,
+    LENIENT_WAKE_LEVEL,
     MAX_COMMAND_SECONDS,
     VOSK_MODEL_PATH,
     WAKE_REPLY,
@@ -24,7 +21,12 @@ from config import (
 )
 from detect_wake_word import WakeWordMonitor
 from interruptions import WakeWordInterrupted, wait_for_result_or_wake_word
-from listen_to_mic import audio_queue, clear_audio_queue, open_microphone_stream
+from listen_to_mic import (
+    audio_queue,
+    clear_audio_queue,
+    open_microphone_stream,
+    reset_audio_device_selection,
+)
 from play_audio import play_wav_file
 from speech_to_text import listen_for_command
 from text_to_speech import synthesize_to_wav
@@ -40,14 +42,17 @@ def get_command_with_retries(model) -> str:
         try:
             command = listen_for_command(model, seconds=MAX_COMMAND_SECONDS)
         except WakeWordInterrupted:
-            speak(LISTEN_AGAIN_REPLY, model=model)
+            print(
+                "Wake phrase interrupted command listening; continuing quietly.",
+                flush=True,
+            )
             continue
 
         if command:
             return command
 
         if attempt < COMMAND_RETRY_COUNT - 1:
-            speak(COMMAND_FAILED_REPLY, model=model)
+            print("No command heard. Listening again.", flush=True)
 
     return ""
 
@@ -64,7 +69,7 @@ def ask_and_speak(user_text: str, model) -> bool:
             return continue_listening
 
         except WakeWordInterrupted:
-            speak(LISTEN_AGAIN_REPLY, model=model)
+            print("Wake phrase interrupted API/playback; listening for command.", flush=True)
             raise
 
         except requests.exceptions.RequestException as e:
@@ -92,7 +97,7 @@ def handle_conversation(model):
     command = get_command_with_retries(model)
 
     if not command:
-        speak(DID_NOT_CATCH_REPLY, model=model)
+        print("No command heard after wake. Returning to wake word mode.", flush=True)
         return
 
     while command:
@@ -111,7 +116,10 @@ def handle_conversation(model):
             try:
                 followup = listen_for_command(model, seconds=listen_seconds)
             except WakeWordInterrupted:
-                speak(LISTEN_AGAIN_REPLY, model=model)
+                print(
+                    "Wake phrase interrupted follow-up listening; listening for command.",
+                    flush=True,
+                )
                 command = get_command_with_retries(model)
                 break
 
@@ -130,7 +138,6 @@ def handle_conversation(model):
             try:
                 should_continue = ask_and_speak(followup, model)
             except WakeWordInterrupted:
-                speak(LISTEN_AGAIN_REPLY, model=model)
                 command = get_command_with_retries(model)
                 break
 
@@ -144,7 +151,7 @@ def run_assistant():
 
     print("Jarvis voice loop running.")
     print(f'Say one of these to wake: {", ".join(WAKE_WORDS)}')
-    print(f'Lenient wake partials: {", ".join(LENIENT_WAKE_PARTIALS)}')
+    print(f"Lenient wake level: {LENIENT_WAKE_LEVEL}")
     print("Press Ctrl+C to stop.")
 
     try:
@@ -156,13 +163,20 @@ def run_assistant():
         speak(HEALTH_ERROR_REPLY)
 
     while True:
-        with open_microphone_stream():
-            while True:
-                data = audio_queue.get()
+        print("Waiting for wake word...", flush=True)
+        try:
+            with open_microphone_stream():
+                while True:
+                    data = audio_queue.get()
 
-                if wake_monitor.accept_audio(data):
-                    clear_audio_queue()
-                    break
+                    if wake_monitor.accept_audio(data):
+                        clear_audio_queue()
+                        break
+        except Exception as e:
+            print(f"Microphone stream failed: {e}. Retrying in 5 seconds.", flush=True)
+            reset_audio_device_selection()
+            time.sleep(5)
+            continue
 
         handle_conversation(model)
         clear_audio_queue()

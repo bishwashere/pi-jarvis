@@ -1,14 +1,37 @@
 # ---------- Audio ----------
 
-# Python/sounddevice audio device index.
-# Your USB audio device was detected as device/card 2.
-AUDIO_DEVICE = 2
+# Python/sounddevice input device. Prefer a stable name/hint over a numeric
+# PortAudio index because indexes can change after reboot.
+AUDIO_DEVICE = "default"
+AUDIO_DEVICE_FALLBACKS = [
+    "pulse",
+    "P10S: USB Audio",
+    "USB Audio",
+    0,
+]
 
 # ALSA playback device for your USB speaker.
 PLAYBACK_DEVICE = "plughw:2,0"
 
 SAMPLE_RATE = 16000
 VOSK_MODEL_PATH = "/home/jarvis/jarvis/runtime/assets/vosk-model-small-en-us-0.15"
+
+
+# ---------- Speech to text ----------
+
+# Vosk is still used for wake detection. This controls command transcription.
+# Use "vosk" to go back to the original streaming recognizer.
+COMMAND_STT_ENGINE = "whisper"
+
+# Local whisper.cpp test setup.
+WHISPER_CPP_BINARY = "/home/jarvis/whisper.cpp/build/bin/whisper-cli"
+WHISPER_MODEL_PATH = "/home/jarvis/whisper.cpp/models/ggml-tiny.en.bin"
+WHISPER_THREADS = 1
+COMMAND_RECORDING_PATH = "/home/jarvis/jarvis/logs/command.wav"
+COMMAND_SILENCE_SECONDS = 1.2
+COMMAND_MIN_RECORD_SECONDS = 0.7
+COMMAND_AUDIO_RMS_THRESHOLD = 350
+WHISPER_TIMEOUT_SECONDS = 180
 
 
 # ---------- Wake word ----------
@@ -25,16 +48,10 @@ WAKE_WORDS = [
     "hello",
 ]
 
-# Extra Vosk mis-hearings that should still wake Jarvis.
-# These are substring matches, so keep them specific enough to avoid false wakes.
-LENIENT_WAKE_PARTIALS = [
-    "he does",
-    "his i was",
-    "hey service",
-    "hello service",
-    "hey jars",
-    "hello jars",
-]
+# 0 = only wake on exact phrases in WAKE_WORDS.
+# 100 = wake on any recognized speech.
+# Values in between lower the similarity needed to treat speech as a wake phrase.
+LENIENT_WAKE_LEVEL = 70
 
 
 # ---------- Local AI API ----------
@@ -66,8 +83,8 @@ FOLLOWUP_SECONDS = 4
 # Prevent duplicate wake triggers.
 DUPLICATE_WAKE_SECONDS = 3
 
-# If the Pi fails to capture a command, retry this many times.
-COMMAND_RETRY_COUNT = 3
+# If the Pi fails to capture a command after wake, return to wake mode quietly.
+COMMAND_RETRY_COUNT = 1
 
 # If the API/server call fails, retry this many times.
 API_RETRY_COUNT = 2
@@ -84,10 +101,7 @@ REPLY_WAV_PATH = "/home/jarvis/jarvis/logs/reply.wav"
 # Startup / assistant phrases.
 HEALTH_OK_REPLY = "Jarvis agent is online."
 HEALTH_ERROR_REPLY = "Jarvis agent health check failed."
-WAKE_REPLY = "Yes. What should I do?"
-DID_NOT_CATCH_REPLY = "I did not catch that."
-COMMAND_FAILED_REPLY = "I did not catch that. Please say it again."
-LISTEN_AGAIN_REPLY = "I am listening."
+WAKE_REPLY = "Hi. How can I help?"
 API_RETRY_REPLY = "One second. I am trying again."
 API_ERROR_REPLY = "I could not reach Pasture."
 GENERIC_ERROR_REPLY = "Something went wrong."

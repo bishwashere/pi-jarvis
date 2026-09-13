@@ -1,28 +1,214 @@
+import os
 import json
 import queue
+import subprocess
+import sys
 import time
+import wave
+from array import array
 
 from vosk import KaldiRecognizer
 
-from config import LENIENT_WAKE_PARTIALS, MAX_COMMAND_SECONDS, SAMPLE_RATE, WAKE_WORDS
-from detect_wake_word import has_wake_word
-from interruptions import WakeWordInterrupted
+from config import (
+    COMMAND_AUDIO_RMS_THRESHOLD,
+    COMMAND_MIN_RECORD_SECONDS,
+    COMMAND_RECORDING_PATH,
+    COMMAND_SILENCE_SECONDS,
+    COMMAND_STT_ENGINE,
+    MAX_COMMAND_SECONDS,
+    SAMPLE_RATE,
+    WAKE_WORDS,
+    WHISPER_CPP_BINARY,
+    WHISPER_MODEL_PATH,
+    WHISPER_THREADS,
+    WHISPER_TIMEOUT_SECONDS,
+)
+from detect_wake_word import has_strict_wake_word
 from listen_to_mic import audio_queue, clear_audio_queue, open_microphone_stream
 
 
 def remove_wake_words(text: str) -> str:
     cleaned = text.lower().strip()
     wake_phrases = sorted(
-        [*WAKE_WORDS, *LENIENT_WAKE_PARTIALS],
+        WAKE_WORDS,
         key=len,
         reverse=True,
     )
     for wake in wake_phrases:
         cleaned = cleaned.replace(wake, " ")
+
     return " ".join(cleaned.split())
 
 
+def handle_wake_phrase_during_command(text: str, start: float) -> str | None:
+    if not has_strict_wake_word(text):
+        return None
+
+    command_after_wake = remove_wake_words(text)
+    elapsed = time.time() - start
+
+    if command_after_wake:
+        print(
+            f"Stopped listening after {elapsed:.1f}s: "
+            "wake phrase included command."
+        )
+        return command_after_wake
+
+    print(
+        f"Wake phrase heard during command listening after {elapsed:.1f}s; "
+        "waiting for command.",
+        flush=True,
+    )
+    return ""
+
+
+def calculate_rms(data: bytes) -> float:
+    if len(data) < 2:
+        return 0.0
+
+    samples = array("h")
+    samples.frombytes(data[: len(data) - (len(data) % 2)])
+    if sys.byteorder == "big":
+        samples.byteswap()
+
+    if not samples:
+        return 0.0
+
+    square_sum = sum(sample * sample for sample in samples)
+    return (square_sum / len(samples)) ** 0.5
+
+
+def write_wav(path: str, frames: list[bytes]):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with wave.open(path, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(SAMPLE_RATE)
+        wav.writeframes(b"".join(frames))
+
+
+def record_command_audio(seconds: int) -> str:
+    clear_audio_queue()
+
+    start = time.time()
+    last_voice_time = None
+    speech_started = False
+    frames = []
+    peak_rms = 0.0
+    stop_reason = "recording window expired"
+
+    print(f"Recording command audio for up to {seconds} seconds...")
+
+    with open_microphone_stream():
+        while time.time() - start < seconds:
+            try:
+                data = audio_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+
+            frames.append(data)
+            rms = calculate_rms(data)
+            peak_rms = max(peak_rms, rms)
+
+            if rms >= COMMAND_AUDIO_RMS_THRESHOLD:
+                if not speech_started:
+                    print(
+                        f"Whisper command recording detected speech "
+                        f"after {time.time() - start:.1f}s "
+                        f"(rms={rms:.0f}).",
+                        flush=True,
+                    )
+                speech_started = True
+                last_voice_time = time.time()
+
+            if (
+                speech_started
+                and last_voice_time is not None
+                and time.time() - last_voice_time >= COMMAND_SILENCE_SECONDS
+                and time.time() - start >= COMMAND_MIN_RECORD_SECONDS
+            ):
+                stop_reason = (
+                    f"speech followed by {COMMAND_SILENCE_SECONDS:.1f}s silence"
+                )
+                break
+
+    elapsed = time.time() - start
+    if not speech_started:
+        print(
+            f"Stopped recording after {elapsed:.1f}s: "
+            f"no speech heard (peak rms={peak_rms:.0f}).",
+            flush=True,
+        )
+        return ""
+
+    write_wav(COMMAND_RECORDING_PATH, frames)
+    print(
+        f"Stopped recording after {elapsed:.1f}s: {stop_reason}; "
+        f"saved {COMMAND_RECORDING_PATH} (peak rms={peak_rms:.0f}).",
+        flush=True,
+    )
+    return COMMAND_RECORDING_PATH
+
+
+def transcribe_with_whisper(audio_path: str) -> str:
+    if not audio_path:
+        return ""
+
+    print(f"Whisper transcribing {audio_path}...", flush=True)
+    start = time.time()
+
+    try:
+        result = subprocess.run(
+            [
+                WHISPER_CPP_BINARY,
+                "-m",
+                WHISPER_MODEL_PATH,
+                "-f",
+                audio_path,
+                "-nt",
+                "-np",
+                "-t",
+                str(WHISPER_THREADS),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=WHISPER_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except FileNotFoundError as e:
+        print(f"Whisper executable not found: {e}", flush=True)
+        return ""
+    except subprocess.TimeoutExpired:
+        print(
+            f"Whisper timed out after {WHISPER_TIMEOUT_SECONDS}s.",
+            flush=True,
+        )
+        return ""
+
+    elapsed = time.time() - start
+    if result.returncode != 0:
+        print(
+            f"Whisper failed after {elapsed:.1f}s "
+            f"(exit {result.returncode}): {result.stderr.strip()}",
+            flush=True,
+        )
+        return ""
+
+    transcript = " ".join(result.stdout.split()).strip()
+    print(f"Whisper transcript after {elapsed:.1f}s: {transcript!r}", flush=True)
+    return remove_wake_words(transcript)
+
+
+def listen_for_command_with_whisper(seconds: int) -> str:
+    print(f"Listening for command with Whisper for up to {seconds} seconds...")
+    audio_path = record_command_audio(seconds)
+    return transcribe_with_whisper(audio_path)
+
+
 def listen_for_command(model, seconds: int = MAX_COMMAND_SECONDS, allow_wake_interrupt: bool = True) -> str:
+    if COMMAND_STT_ENGINE.lower() == "whisper":
+        return listen_for_command_with_whisper(seconds)
+
     recognizer = KaldiRecognizer(model, SAMPLE_RATE)
 
     clear_audio_queue()
@@ -47,16 +233,15 @@ def listen_for_command(model, seconds: int = MAX_COMMAND_SECONDS, allow_wake_int
                 text = result.get("text", "").strip()
 
                 if text:
-                    if allow_wake_interrupt and has_wake_word(text):
-                        command_after_wake = remove_wake_words(text)
-                        if command_after_wake:
-                            elapsed = time.time() - start
-                            print(
-                                f"Stopped listening after {elapsed:.1f}s: "
-                                "wake phrase included command."
-                            )
-                            return command_after_wake
-                        raise WakeWordInterrupted()
+                    if allow_wake_interrupt:
+                        command_after_wake = handle_wake_phrase_during_command(
+                            text,
+                            start,
+                        )
+                        if command_after_wake is not None:
+                            if command_after_wake:
+                                return command_after_wake
+                            continue
 
                     final_parts.append(text)
                     last_speech_time = time.time()
@@ -69,8 +254,9 @@ def listen_for_command(model, seconds: int = MAX_COMMAND_SECONDS, allow_wake_int
                     last_partial = partial
                     last_speech_time = time.time()
 
-                    if allow_wake_interrupt and has_wake_word(partial):
-                        raise WakeWordInterrupted()
+                    if allow_wake_interrupt and has_strict_wake_word(partial):
+                        handle_wake_phrase_during_command(partial, start)
+                        continue
 
             if final_parts and time.time() - last_speech_time > 0.7:
                 stop_reason = "speech followed by 0.7s silence"
