@@ -24,8 +24,17 @@ def clear_audio_queue():
             break
 
 
+def sounddevice_input_device(device):
+    """Map the portable 'default' setting to PortAudio's default-device value."""
+    if device is None:
+        return None
+    if isinstance(device, str) and device.strip().lower() in {"", "default"}:
+        return None
+    return device
+
+
 def describe_audio_device(device):
-    info = sd.query_devices(device, "input")
+    info = sd.query_devices(sounddevice_input_device(device), "input")
     return f"{info['name']} ({info['max_input_channels']} input channels)"
 
 
@@ -39,14 +48,15 @@ def candidate_audio_devices():
 
 
 def query_input_device(candidate):
+    sounddevice_candidate = sounddevice_input_device(candidate)
     try:
         sd.check_input_settings(
-            device=candidate,
+            device=sounddevice_candidate,
             channels=1,
             dtype="int16",
             samplerate=SAMPLE_RATE,
         )
-        info = sd.query_devices(candidate, "input")
+        info = sd.query_devices(sounddevice_candidate, "input")
     except Exception as e:
         print(f"Audio input candidate {candidate!r} unavailable: {e}", flush=True)
         return None
@@ -143,7 +153,7 @@ def open_microphone_stream():
     return sd.RawInputStream(
         samplerate=SAMPLE_RATE,
         blocksize=4000,
-        device=device,
+        device=sounddevice_input_device(device),
         dtype="int16",
         channels=1,
         callback=audio_callback,

@@ -1,25 +1,37 @@
 # Pi Jarvis
 
-Voice assistant runtime for a Raspberry Pi. It listens for a wake word, records a spoken command, sends the command to the configured Jarvis agent API, converts the reply to speech with Piper, and plays it through the configured ALSA output device.
+Voice assistant runtime for Raspberry Pi, Linux, and 64-bit Windows. It listens
+for a wake word, records a spoken command, sends the command to the configured
+Jarvis agent API, converts the reply to speech with Piper, and plays it through
+the platform's configured audio output.
 
 ## 1. Install
 
-### 1.1 Setting Up Python (Raspberry Pi, Mac, Windows)
+### 1.1 Python Environment (Raspberry Pi, Linux, Windows)
 
-Use the project folder for your machine. On the Raspberry Pi:
+The project uses `uv` and keeps its environment under `runtime/venv`. Python
+3.12 is the tested version.
 
-```sh
-cd /home/jarvis/jarvis
-```
-
-Create or activate a Python environment:
+On Raspberry Pi or Linux, run:
 
 ```sh
-python3 -m venv runtime/venv
+UV_PROJECT_ENVIRONMENT=runtime/venv uv sync --python 3.12 --locked
 . runtime/venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install requests vosk sounddevice piper-tts
 ```
+
+On 64-bit Windows, install the latest
+[Microsoft Visual C++ x64 Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170)
+first; ONNX Runtime requires the Visual C++ runtime. Then run in PowerShell:
+
+```powershell
+$env:UV_PROJECT_ENVIRONMENT = "runtime/venv"
+uv sync --python 3.12 --locked
+```
+
+Nothing is installed into the system Python. `uv` can install Python 3.12
+locally if the machine does not already have it. The lockfile contains compatible
+Windows x64 artifacts for CPython 3.10 through 3.14; runtime tests are performed
+on Linux, so real Windows microphone and speaker hardware should still be tested.
 
 ### 1.2 Raspberry Pi System Packages
 
@@ -49,24 +61,68 @@ ls -lh /home/jarvis/whisper.cpp/models/ggml-tiny.en.bin
 
 ## 2. Run
 
-Start the voice assistant:
+On the deployed Raspberry Pi, start the production profile:
 
 ```sh
-cd /home/jarvis/jarvis
-. runtime/venv/bin/activate
-python jarvis_voice.py
-```
-
-Or use the launcher script:
-
-```sh
-cd /home/jarvis/jarvis
 ./run_jarvis.sh
 ```
 
-Press `Ctrl+C` to stop.
+The launcher finds the project directory automatically, uses
+`runtime/venv`, prevents duplicate instances with `flock`, and writes to
+`logs/jarvis_voice.log`.
+
+For local Linux development without `whisper.cpp` or the Pi-specific ALSA card,
+use:
+
+```sh
+./run_local.sh
+```
+
+On Windows PowerShell, use the native launcher:
+
+```powershell
+.\run_local.ps1
+```
+
+The local profile selects the bundled Vosk model for command transcription,
+the default audio output, and foreground logs. It does not replace the Jarvis
+agent backend; point it to a reachable server when necessary:
+
+```sh
+JARVIS_API_BASE_URL=http://127.0.0.1:1235/v1/agents/jarvis ./run_local.sh
+```
+
+The PowerShell equivalent is:
+
+```powershell
+$env:JARVIS_API_BASE_URL = "http://127.0.0.1:1235/v1/agents/jarvis"
+.\run_local.ps1
+```
+
+Press `Ctrl+C` to stop either foreground launcher.
 
 ## 3. Check
+
+Run the hardware-safe local smoke test. It loads Vosk, exercises response and
+wake-word logic, and generates speech with Piper without opening the microphone,
+speaker, or network:
+
+```sh
+runtime/venv/bin/python self_test.py
+```
+
+Run the automated tests, which mock all hardware and network boundaries:
+
+```sh
+runtime/venv/bin/python -m pytest
+```
+
+On Windows PowerShell, the equivalent checks are:
+
+```powershell
+.\runtime\venv\Scripts\python.exe self_test.py
+.\runtime\venv\Scripts\python.exe -m pytest
+```
 
 Check the agent API from the Pi:
 
@@ -86,29 +142,40 @@ Follow the live log from `/home/jarvis/jarvis`:
 tail -n 100 -f logs/jarvis_voice.log
 ```
 
-List audio devices:
+List PortAudio devices on Linux:
 
 ```sh
-python -m sounddevice
+runtime/venv/bin/python -m sounddevice
+```
+
+On Windows PowerShell:
+
+```powershell
+.\runtime\venv\Scripts\python.exe -m sounddevice
+```
+
+On Linux, inspect the underlying ALSA devices and controls:
+
+```sh
 arecord -l
 aplay -l
 amixer scontrols
 ```
 
-Test speaker playback:
+Test Linux speaker playback:
 
 ```sh
 aplay -D plughw:2,0 logs/reply.wav
 ```
 
-Test Piper manually:
+Test Piper manually on Linux:
 
 ```sh
 echo "Jarvis is online." | piper --model runtime/assets/piper/en_US-amy-medium.onnx --output_file /tmp/jarvis-test.wav
 aplay -D plughw:2,0 /tmp/jarvis-test.wav
 ```
 
-Test Whisper manually:
+Test Whisper manually on the Pi/Linux deployment:
 
 ```sh
 cd /home/jarvis/whisper.cpp
@@ -131,21 +198,36 @@ nohup /home/jarvis/jarvis/run_jarvis.sh >/dev/null 2>&1 &
 
 ## 5. Configuration Reference
 
-Edit `config.py` if your Pi hardware or API host changes.
+Defaults live in `config.py`. Repository assets and logs are resolved from the
+checkout automatically. Settings can be overridden without editing code by
+using environment variables.
 
 - Microphone input device: `AUDIO_DEVICE = "default"` with fallbacks for `pulse`, `P10S: USB Audio`, `USB Audio`, and index `0`.
-- Speaker playback device: `PLAYBACK_DEVICE = "plughw:2,0"`
-- ALSA volume card/control in `play_audio.py`: card `2`, control `PCM`, volume `85%`
+- Playback backend: automatic (`alsa` on Linux, `sounddevice` on Windows)
+- Speaker playback device: `plughw:2,0` on Linux and the system default elsewhere
+- Linux ALSA volume card/control: card `2`, control `PCM`, volume `85%`
 - Wake words/phrases: `hello jarvis`, `hey jarvis`, `hello computer`, `hey computer`, `jarvis`, `computer`, `hello`
 - Lenient wake level: `70`, where `0` only wakes on exact configured phrases and `100` wakes on any recognized speech.
 - Command speech-to-text engine: `whisper`; Vosk is still used for wake detection.
-- Whisper model: `/home/jarvis/whisper.cpp/models/ggml-tiny.en.bin`
+- Whisper model: `../whisper.cpp/models/ggml-tiny.en.bin`, relative to the checkout
 - Wake response: `Hi. How can I help?`
 - Initial command listen window: `60` seconds, with an earlier stop after speech followed by a short silence.
 - Follow-up listen window after an answer: `4` seconds.
 - Agent API: `http://192.168.1.82:1235/v1/agents/jarvis`
-- Vosk model: `/home/jarvis/jarvis/runtime/assets/vosk-model-small-en-us-0.15`
-- Piper voice model: `/home/jarvis/jarvis/runtime/assets/piper/en_US-amy-medium.onnx`
+- Vosk model: `runtime/assets/vosk-model-small-en-us-0.15`
+- Piper voice model: `runtime/assets/piper/en_US-amy-medium.onnx`
+
+Common environment overrides:
+
+- `JARVIS_PROJECT_DIR`, `JARVIS_VENV_DIR`, `JARVIS_LOG_FILE`, `JARVIS_LOCK_FILE`
+- `JARVIS_API_BASE_URL`, `JARVIS_API_URL`, `JARVIS_API_HEALTH_URL`, `JARVIS_API_MODEL`
+- `JARVIS_AUDIO_DEVICE`, `JARVIS_AUDIO_DEVICE_FALLBACKS`
+- `JARVIS_PLAYBACK_BACKEND` (`auto`, `alsa`, or `sounddevice`), `JARVIS_PLAYBACK_DEVICE`
+- `JARVIS_CONFIGURE_VOLUME`, `JARVIS_VOLUME_CARD`, `JARVIS_VOLUME_CONTROL`, `JARVIS_VOLUME_LEVEL`
+- `JARVIS_COMMAND_STT_ENGINE` (`whisper` or `vosk`)
+- `JARVIS_WHISPER_CPP_DIR`, `JARVIS_WHISPER_CPP_BINARY`, `JARVIS_WHISPER_MODEL_PATH`
+- `JARVIS_VOSK_MODEL_PATH`, `JARVIS_PIPER_MODEL_PATH`, `JARVIS_PIPER_BINARY`
+- `JARVIS_COMMAND_RECORDING_PATH`, `JARVIS_REPLY_WAV_PATH`
 
 ## 6. Notes
 
@@ -153,7 +235,9 @@ Jarvis uses Vosk for wake detection and local `whisper.cpp` for command transcri
 
 The `tiny.en` Whisper model is the smallest practical local Whisper model for this Pi. It is good for testing, but command transcription may still be slower than Vosk because Whisper records the whole command audio clip first, then transcribes it.
 
-On Mac or Windows, the Python package install is similar, but system audio dependencies and path values are different. For example, the Raspberry Pi uses `apt` and `/home/jarvis/...`; a Mac or Windows test setup needs its own project path, audio device names, and PortAudio setup.
+Windows uses PortAudio playback through `sounddevice`; Linux keeps the existing
+ALSA `aplay` path. The PowerShell launcher selects Vosk so Windows does not
+require a separate `whisper.cpp` build for local testing.
 
 Jarvis validates that the chosen microphone supports the configured `SAMPLE_RATE` before opening it. If the USB microphone or speaker appears under a different card/device number, update `AUDIO_DEVICE`, `AUDIO_DEVICE_FALLBACKS`, `PLAYBACK_DEVICE`, `VOLUME_CARD`, and `VOLUME_CONTROL`.
 
@@ -188,8 +272,8 @@ In Whisper command mode, command capture looks like this:
 Listening for command with Whisper for up to 60 seconds...
 Recording command audio for up to 60 seconds...
 Whisper command recording detected speech after 1.0s (rms=1234).
-Stopped recording after 4.2s: speech followed by 1.2s silence; saved /home/jarvis/jarvis/logs/command.wav (peak rms=4567).
-Whisper transcribing /home/jarvis/jarvis/logs/command.wav...
+Stopped recording after 4.2s: speech followed by 1.2s silence; saved /path/to/pi-jarvis/logs/command.wav (peak rms=4567).
+Whisper transcribing /path/to/pi-jarvis/logs/command.wav...
 Whisper transcript after 3.3s: 'what is the weather today'
 Command: what is the weather today
 ```
@@ -202,15 +286,22 @@ Command: what is the weather today
 - `listen_to_mic.py` - microphone stream using `sounddevice`.
 - `speech_to_text.py` and `detect_wake_word.py` - Vosk speech recognition and wake-word detection.
 - `call_agent_api.py` - HTTP calls to the Jarvis/Pasture agent API.
-- `text_to_speech.py` and `play_audio.py` - Piper TTS and ALSA playback.
+- `text_to_speech.py` and `play_audio.py` - Piper TTS and cross-platform playback.
+- `self_test.py` - local smoke test that avoids hardware, network, and Whisper.
+- `run_local.sh` - local development profile using bundled Vosk and default audio.
+- `run_local.ps1` - equivalent native Windows PowerShell launcher.
+- `pyproject.toml` and `uv.lock` - reproducible Python dependencies.
+- `tests/` - hardware- and network-independent automated tests.
 - `runtime/assets/` - local Vosk and Piper model assets copied from the Pi.
 
 ## 9. Troubleshooting
 
 - If startup fails with a Vosk model error, confirm `runtime/assets/vosk-model-small-en-us-0.15/` exists and matches `VOSK_MODEL_PATH`.
-- If command transcription fails with Whisper errors, confirm `/home/jarvis/whisper.cpp/build/bin/whisper-cli` and `/home/jarvis/whisper.cpp/models/ggml-tiny.en.bin` exist and match `WHISPER_CPP_BINARY` / `WHISPER_MODEL_PATH`.
+- If command transcription fails with Whisper errors, confirm the sibling `whisper.cpp/build/bin/whisper-cli` and `whisper.cpp/models/ggml-tiny.en.bin` paths exist, set the corresponding environment overrides, or use the platform's local launcher for Vosk transcription.
 - If Whisper records silence even when you speak, lower `COMMAND_AUDIO_RMS_THRESHOLD`; if it records background noise as speech, raise it.
 - If TTS fails, confirm `piper` is installed and `PIPER_MODEL_PATH` points to the `.onnx` voice model.
-- If the Pi cannot hear commands, run `python -m sounddevice` and update `AUDIO_DEVICE`.
-- If audio plays through the wrong speaker, run `aplay -l` and update `PLAYBACK_DEVICE`.
-- If the assistant says it cannot reach Pasture, confirm the API host is online and reachable from the Pi.
+- If Jarvis cannot hear commands, use the platform-specific `sounddevice` command above and update `AUDIO_DEVICE`.
+- If audio plays through the wrong speaker on Linux, run `aplay -l` and update `PLAYBACK_DEVICE`. On Windows, use the `sounddevice` command above and set `JARVIS_PLAYBACK_DEVICE` to the desired name or index.
+- If Windows blocks the PowerShell launcher, allow scripts only for the current shell with `Set-ExecutionPolicy -Scope Process Bypass`, then run `.\run_local.ps1` again.
+- Windows x64 is supported by the locked native packages; Windows ARM and 32-bit Windows are not currently validated.
+- If the assistant says it cannot reach Pasture, confirm the API host is online and reachable from the machine running Jarvis.

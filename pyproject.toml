@@ -1,0 +1,27 @@
+[project]
+name = "pi-jarvis"
+version = "0.1.0"
+description = "Portable Raspberry Pi voice assistant runtime"
+readme = "README.md"
+requires-python = ">=3.10,<3.15"
+dependencies = [
+    # Keep a manylinux2014 ARM64 wheel available for Python 3.10 Pi installs.
+    # The complementary marker lets newer Pythons use current ONNX Runtime.
+    "onnxruntime<1.17; python_version<'3.11'",
+    "onnxruntime>=1.24,<2; python_version>='3.11'",
+    "piper-tts>=1.8.0,<2",
+    "requests>=2.34.2,<3",
+    "sounddevice>=0.5.6,<0.6",
+    "vosk>=0.3.45,<0.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

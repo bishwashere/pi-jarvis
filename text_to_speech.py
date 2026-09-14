@@ -1,8 +1,17 @@
 import os
 import re
+import shutil
 import subprocess
+import sys
+from pathlib import Path
 
-from config import EMPTY_RESPONSE_REPLY, MAX_TTS_CHARS, PIPER_MODEL_PATH, REPLY_WAV_PATH
+from config import (
+    EMPTY_RESPONSE_REPLY,
+    MAX_TTS_CHARS,
+    PIPER_BINARY,
+    PIPER_MODEL_PATH,
+    REPLY_WAV_PATH,
+)
 
 
 def clean_for_tts(text: str) -> str:
@@ -15,6 +24,25 @@ def clean_for_tts(text: str) -> str:
     return text[:MAX_TTS_CHARS]
 
 
+def resolve_piper_binary() -> str:
+    """Find Piper on PATH or beside the active virtual environment's Python."""
+    executable = shutil.which(PIPER_BINARY)
+    if executable:
+        return executable
+
+    if Path(PIPER_BINARY).name == PIPER_BINARY:
+        executable_names = [PIPER_BINARY]
+        if not PIPER_BINARY.lower().endswith(".exe"):
+            executable_names.append(f"{PIPER_BINARY}.exe")
+
+        for executable_name in executable_names:
+            venv_executable = Path(sys.executable).with_name(executable_name)
+            if venv_executable.is_file():
+                return str(venv_executable)
+
+    return PIPER_BINARY
+
+
 def synthesize_to_wav(text: str, output_path: str = REPLY_WAV_PATH) -> str:
     text = clean_for_tts(text)
 
@@ -25,10 +53,11 @@ def synthesize_to_wav(text: str, output_path: str = REPLY_WAV_PATH) -> str:
 
     env = dict(os.environ)
     env["ORT_LOG_SEVERITY_LEVEL"] = "3"
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
     subprocess.run(
         [
-            "piper",
+            resolve_piper_binary(),
             "--model",
             PIPER_MODEL_PATH,
             "--output_file",
@@ -36,6 +65,7 @@ def synthesize_to_wav(text: str, output_path: str = REPLY_WAV_PATH) -> str:
         ],
         input=text,
         text=True,
+        encoding="utf-8",
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

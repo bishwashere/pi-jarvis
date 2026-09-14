@@ -1,14 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_DIR="${JARVIS_PROJECT_DIR:-/home/jarvis/jarvis}"
-LOG_FILE="$PROJECT_DIR/logs/jarvis_voice.log"
-LOCK_FILE="/tmp/jarvis-voice.lock"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd -- "${JARVIS_PROJECT_DIR:-$SCRIPT_DIR}" && pwd)"
+VENV_DIR="${JARVIS_VENV_DIR:-$PROJECT_DIR/runtime/venv}"
+if [[ "$VENV_DIR" != /* ]]; then
+    VENV_DIR="$PROJECT_DIR/$VENV_DIR"
+fi
+LOG_FILE="${JARVIS_LOG_FILE:-$PROJECT_DIR/logs/jarvis_voice.log}"
+LOCK_FILE="${JARVIS_LOCK_FILE:-/tmp/jarvis-voice.lock}"
+
+if [[ ! -x "$VENV_DIR/bin/python" ]]; then
+    echo "Jarvis virtual environment not found at $VENV_DIR" >&2
+    echo "Run the uv setup documented in README.md first." >&2
+    exit 1
+fi
 
 cd "$PROJECT_DIR"
-mkdir -p logs runtime/cache
+mkdir -p "$(dirname "$LOG_FILE")" runtime/cache
 
-export PATH="$PROJECT_DIR/runtime/venv/bin:$PATH"
+export JARVIS_PROJECT_DIR="$PROJECT_DIR"
+export PATH="$VENV_DIR/bin:$PATH"
 export PYTHONUNBUFFERED=1
 
-exec flock -n "$LOCK_FILE" "$PROJECT_DIR/runtime/venv/bin/python" "$PROJECT_DIR/jarvis_voice.py" >>"$LOG_FILE" 2>&1
+if [[ "${JARVIS_FOREGROUND:-0}" == "1" ]]; then
+    exec flock -n "$LOCK_FILE" "$VENV_DIR/bin/python" "$PROJECT_DIR/jarvis_voice.py"
+fi
+
+exec flock -n "$LOCK_FILE" "$VENV_DIR/bin/python" "$PROJECT_DIR/jarvis_voice.py" >>"$LOG_FILE" 2>&1

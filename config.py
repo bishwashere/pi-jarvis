@@ -1,33 +1,121 @@
+"""Runtime configuration for both the deployed Pi and local development.
+
+Environment overrides use the ``JARVIS_`` prefix.  Defaults intentionally keep
+the deployed Raspberry Pi behaviour, while paths to files that live in this
+repository are derived from the checkout location.
+"""
+
+import os
+import sys
+from pathlib import Path
+
+
+def _env_path(name: str, default: Path) -> str:
+    """Return an absolute path, resolving relative overrides from PROJECT_DIR."""
+    raw_value = os.environ.get(name)
+    path = Path(raw_value).expanduser() if raw_value else default
+    if not path.is_absolute():
+        path = PROJECT_DIR / path
+    return str(path.resolve())
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean value, got {raw_value!r}")
+
+
+def _audio_device(value: str):
+    """Allow PortAudio device indexes as well as device names in env values."""
+    stripped = value.strip()
+    if stripped.lstrip("-").isdigit():
+        return int(stripped)
+    return stripped
+
+
+PROJECT_DIR = Path(
+    os.environ.get("JARVIS_PROJECT_DIR", Path(__file__).resolve().parent)
+).expanduser().resolve()
+RUNTIME_DIR = PROJECT_DIR / "runtime"
+ASSETS_DIR = RUNTIME_DIR / "assets"
+LOG_DIR = PROJECT_DIR / "logs"
+
+
 # ---------- Audio ----------
 
 # Python/sounddevice input device. Prefer a stable name/hint over a numeric
 # PortAudio index because indexes can change after reboot.
-AUDIO_DEVICE = "default"
-AUDIO_DEVICE_FALLBACKS = [
-    "pulse",
-    "P10S: USB Audio",
-    "USB Audio",
-    0,
-]
+AUDIO_DEVICE = _audio_device(os.environ.get("JARVIS_AUDIO_DEVICE", "default"))
 
-# ALSA playback device for your USB speaker.
-PLAYBACK_DEVICE = "plughw:2,0"
+_audio_fallbacks = os.environ.get("JARVIS_AUDIO_DEVICE_FALLBACKS")
+if _audio_fallbacks:
+    AUDIO_DEVICE_FALLBACKS = [
+        _audio_device(value)
+        for value in _audio_fallbacks.split(",")
+        if value.strip()
+    ]
+else:
+    AUDIO_DEVICE_FALLBACKS = [
+        "pulse",
+        "P10S: USB Audio",
+        "USB Audio",
+        0,
+    ]
+
+# ALSA remains the Raspberry Pi default. Other platforms use PortAudio through
+# sounddevice, which selects the operating system's default output device.
+PLAYBACK_BACKEND = os.environ.get("JARVIS_PLAYBACK_BACKEND", "auto").lower()
+_default_playback_device = (
+    "plughw:2,0" if sys.platform.startswith("linux") else "default"
+)
+PLAYBACK_DEVICE = _audio_device(
+    os.environ.get("JARVIS_PLAYBACK_DEVICE", _default_playback_device)
+)
+CONFIGURE_VOLUME = _env_bool("JARVIS_CONFIGURE_VOLUME", True)
+VOLUME_CARD = os.environ.get("JARVIS_VOLUME_CARD", "2")
+VOLUME_CONTROL = os.environ.get("JARVIS_VOLUME_CONTROL", "PCM")
+VOLUME_LEVEL = os.environ.get("JARVIS_VOLUME_LEVEL", "85%")
 
 SAMPLE_RATE = 16000
-VOSK_MODEL_PATH = "/home/jarvis/jarvis/runtime/assets/vosk-model-small-en-us-0.15"
+VOSK_MODEL_PATH = _env_path(
+    "JARVIS_VOSK_MODEL_PATH",
+    ASSETS_DIR / "vosk-model-small-en-us-0.15",
+)
 
 
 # ---------- Speech to text ----------
 
 # Vosk is still used for wake detection. This controls command transcription.
 # Use "vosk" to go back to the original streaming recognizer.
-COMMAND_STT_ENGINE = "whisper"
+COMMAND_STT_ENGINE = os.environ.get("JARVIS_COMMAND_STT_ENGINE", "whisper")
 
 # Local whisper.cpp test setup.
-WHISPER_CPP_BINARY = "/home/jarvis/whisper.cpp/build/bin/whisper-cli"
-WHISPER_MODEL_PATH = "/home/jarvis/whisper.cpp/models/ggml-tiny.en.bin"
+WHISPER_CPP_DIR = Path(
+    os.environ.get("JARVIS_WHISPER_CPP_DIR", PROJECT_DIR.parent / "whisper.cpp")
+).expanduser()
+if not WHISPER_CPP_DIR.is_absolute():
+    WHISPER_CPP_DIR = PROJECT_DIR / WHISPER_CPP_DIR
+WHISPER_CPP_DIR = WHISPER_CPP_DIR.resolve()
+WHISPER_CPP_BINARY = _env_path(
+    "JARVIS_WHISPER_CPP_BINARY",
+    WHISPER_CPP_DIR / "build/bin/whisper-cli",
+)
+WHISPER_MODEL_PATH = _env_path(
+    "JARVIS_WHISPER_MODEL_PATH",
+    WHISPER_CPP_DIR / "models/ggml-tiny.en.bin",
+)
 WHISPER_THREADS = 1
-COMMAND_RECORDING_PATH = "/home/jarvis/jarvis/logs/command.wav"
+COMMAND_RECORDING_PATH = _env_path(
+    "JARVIS_COMMAND_RECORDING_PATH",
+    LOG_DIR / "command.wav",
+)
 COMMAND_SILENCE_SECONDS = 1.2
 COMMAND_MIN_RECORD_SECONDS = 0.7
 COMMAND_AUDIO_RMS_THRESHOLD = 350
@@ -56,9 +144,19 @@ LENIENT_WAKE_LEVEL = 70
 
 # ---------- Local AI API ----------
 
-API_URL = "http://192.168.1.82:1235/v1/agents/jarvis/chat/completions"
-API_HEALTH_URL = "http://192.168.1.82:1235/v1/agents/jarvis/health"
-API_MODEL = "api-assistant"
+API_BASE_URL = os.environ.get(
+    "JARVIS_API_BASE_URL",
+    "http://192.168.1.82:1235/v1/agents/jarvis",
+).rstrip("/")
+API_URL = os.environ.get(
+    "JARVIS_API_URL",
+    f"{API_BASE_URL}/chat/completions",
+)
+API_HEALTH_URL = os.environ.get(
+    "JARVIS_API_HEALTH_URL",
+    f"{API_BASE_URL}/health",
+)
+API_MODEL = os.environ.get("JARVIS_API_MODEL", "api-assistant")
 
 SYSTEM_PROMPT = (
     "You are a voice assistant running through a Raspberry Pi. "
@@ -93,10 +191,14 @@ API_RETRY_COUNT = 2
 # ---------- Voice / TTS ----------
 
 # Piper American female voice.
-PIPER_MODEL_PATH = "/home/jarvis/jarvis/runtime/assets/piper/en_US-amy-medium.onnx"
+PIPER_BINARY = os.environ.get("JARVIS_PIPER_BINARY", "piper")
+PIPER_MODEL_PATH = _env_path(
+    "JARVIS_PIPER_MODEL_PATH",
+    ASSETS_DIR / "piper/en_US-amy-medium.onnx",
+)
 
 # Used only if you use file based playback.
-REPLY_WAV_PATH = "/home/jarvis/jarvis/logs/reply.wav"
+REPLY_WAV_PATH = _env_path("JARVIS_REPLY_WAV_PATH", LOG_DIR / "reply.wav")
 
 # Startup / assistant phrases.
 HEALTH_OK_REPLY = "Jarvis agent is online."

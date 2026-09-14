@@ -1,6 +1,9 @@
 import sys
+from pathlib import Path
 
-sys.pycache_prefix = "/home/jarvis/jarvis/runtime/cache/pycache"
+sys.pycache_prefix = str(
+    Path(__file__).resolve().parent / "runtime/cache/pycache"
+)
 
 from conversation_loop import run_assistant
 
