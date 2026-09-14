@@ -31,9 +31,14 @@ def resolve_piper_binary() -> str:
         return executable
 
     if Path(PIPER_BINARY).name == PIPER_BINARY:
-        venv_executable = Path(sys.executable).with_name(PIPER_BINARY)
-        if venv_executable.is_file():
-            return str(venv_executable)
+        executable_names = [PIPER_BINARY]
+        if not PIPER_BINARY.lower().endswith(".exe"):
+            executable_names.append(f"{PIPER_BINARY}.exe")
+
+        for executable_name in executable_names:
+            venv_executable = Path(sys.executable).with_name(executable_name)
+            if venv_executable.is_file():
+                return str(venv_executable)
 
     return PIPER_BINARY
 
@@ -60,6 +65,7 @@ def synthesize_to_wav(text: str, output_path: str = REPLY_WAV_PATH) -> str:
         ],
         input=text,
         text=True,
+        encoding="utf-8",
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

@@ -6,6 +6,7 @@ repository are derived from the checkout location.
 """
 
 import os
+import sys
 from pathlib import Path
 
 
@@ -68,8 +69,15 @@ else:
         0,
     ]
 
-# ALSA playback device for your USB speaker.
-PLAYBACK_DEVICE = os.environ.get("JARVIS_PLAYBACK_DEVICE", "plughw:2,0")
+# ALSA remains the Raspberry Pi default. Other platforms use PortAudio through
+# sounddevice, which selects the operating system's default output device.
+PLAYBACK_BACKEND = os.environ.get("JARVIS_PLAYBACK_BACKEND", "auto").lower()
+_default_playback_device = (
+    "plughw:2,0" if sys.platform.startswith("linux") else "default"
+)
+PLAYBACK_DEVICE = _audio_device(
+    os.environ.get("JARVIS_PLAYBACK_DEVICE", _default_playback_device)
+)
 CONFIGURE_VOLUME = _env_bool("JARVIS_CONFIGURE_VOLUME", True)
 VOLUME_CARD = os.environ.get("JARVIS_VOLUME_CARD", "2")
 VOLUME_CONTROL = os.environ.get("JARVIS_VOLUME_CONTROL", "PCM")

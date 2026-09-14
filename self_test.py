@@ -6,6 +6,7 @@ Python/Piper runtime so developers can distinguish setup problems from missing
 external services or Raspberry Pi hardware.
 """
 
+import os
 import shutil
 import tempfile
 import wave
@@ -86,7 +87,11 @@ def describe_optional_runtime() -> None:
     print(f"[info] command STT engine: {COMMAND_STT_ENGINE}")
     print(f"[info] optional whisper.cpp runtime: {status}")
     if not whisper_ready:
-        print("[info] run_local.sh selects bundled Vosk for command transcription")
+        local_launcher = "run_local.ps1" if os.name == "nt" else "run_local.sh"
+        print(
+            f"[info] {local_launcher} selects bundled Vosk "
+            "for command transcription"
+        )
 
 
 def main() -> int:
