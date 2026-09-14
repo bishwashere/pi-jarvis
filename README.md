@@ -4,22 +4,23 @@ Voice assistant runtime for a Raspberry Pi. It listens for a wake word, records 
 
 ## 1. Install
 
-### 1.1 Setting Up Python (Raspberry Pi, Mac, Windows)
+### 1.1 Python Environment (Raspberry Pi, Mac, Windows)
 
-Use the project folder for your machine. On the Raspberry Pi:
+The project uses `uv` and keeps its environment under `runtime/venv`. From the
+project directory, create or update the environment from the lockfile:
 
 ```sh
-cd /home/jarvis/jarvis
+UV_PROJECT_ENVIRONMENT=runtime/venv uv sync --python 3.12 --locked
 ```
 
-Create or activate a Python environment:
+Activate it when running Python commands directly:
 
 ```sh
-python3 -m venv runtime/venv
 . runtime/venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install requests vosk sounddevice piper-tts
 ```
+
+Nothing is installed into the system Python. Python 3.12 is the tested version;
+`uv` can install it locally if the machine does not already have it.
 
 ### 1.2 Raspberry Pi System Packages
 
@@ -49,24 +50,47 @@ ls -lh /home/jarvis/whisper.cpp/models/ggml-tiny.en.bin
 
 ## 2. Run
 
-Start the voice assistant:
+On the deployed Raspberry Pi, start the production profile:
 
 ```sh
-cd /home/jarvis/jarvis
-. runtime/venv/bin/activate
-python jarvis_voice.py
-```
-
-Or use the launcher script:
-
-```sh
-cd /home/jarvis/jarvis
 ./run_jarvis.sh
 ```
 
-Press `Ctrl+C` to stop.
+The launcher finds the project directory automatically, uses
+`runtime/venv`, prevents duplicate instances with `flock`, and writes to
+`logs/jarvis_voice.log`.
+
+For local development without `whisper.cpp` or the Pi-specific ALSA card, use:
+
+```sh
+./run_local.sh
+```
+
+The local profile selects the bundled Vosk model for command transcription,
+the default audio output, and foreground logs. It does not replace the Jarvis
+agent backend; point it to a reachable server when necessary:
+
+```sh
+JARVIS_API_BASE_URL=http://127.0.0.1:1235/v1/agents/jarvis ./run_local.sh
+```
+
+Press `Ctrl+C` to stop either foreground launcher.
 
 ## 3. Check
+
+Run the hardware-safe local smoke test. It loads Vosk, exercises response and
+wake-word logic, and generates speech with Piper without opening the microphone,
+speaker, or network:
+
+```sh
+runtime/venv/bin/python self_test.py
+```
+
+Run the automated tests, which mock all hardware and network boundaries:
+
+```sh
+runtime/venv/bin/python -m pytest
+```
 
 Check the agent API from the Pi:
 
@@ -131,21 +155,34 @@ nohup /home/jarvis/jarvis/run_jarvis.sh >/dev/null 2>&1 &
 
 ## 5. Configuration Reference
 
-Edit `config.py` if your Pi hardware or API host changes.
+Defaults live in `config.py`. Repository assets and logs are resolved from the
+checkout automatically. Settings can be overridden without editing code by
+using environment variables.
 
 - Microphone input device: `AUDIO_DEVICE = "default"` with fallbacks for `pulse`, `P10S: USB Audio`, `USB Audio`, and index `0`.
 - Speaker playback device: `PLAYBACK_DEVICE = "plughw:2,0"`
-- ALSA volume card/control in `play_audio.py`: card `2`, control `PCM`, volume `85%`
+- ALSA volume card/control: card `2`, control `PCM`, volume `85%`
 - Wake words/phrases: `hello jarvis`, `hey jarvis`, `hello computer`, `hey computer`, `jarvis`, `computer`, `hello`
 - Lenient wake level: `70`, where `0` only wakes on exact configured phrases and `100` wakes on any recognized speech.
 - Command speech-to-text engine: `whisper`; Vosk is still used for wake detection.
-- Whisper model: `/home/jarvis/whisper.cpp/models/ggml-tiny.en.bin`
+- Whisper model: `../whisper.cpp/models/ggml-tiny.en.bin`, relative to the checkout
 - Wake response: `Hi. How can I help?`
 - Initial command listen window: `60` seconds, with an earlier stop after speech followed by a short silence.
 - Follow-up listen window after an answer: `4` seconds.
 - Agent API: `http://192.168.1.82:1235/v1/agents/jarvis`
-- Vosk model: `/home/jarvis/jarvis/runtime/assets/vosk-model-small-en-us-0.15`
-- Piper voice model: `/home/jarvis/jarvis/runtime/assets/piper/en_US-amy-medium.onnx`
+- Vosk model: `runtime/assets/vosk-model-small-en-us-0.15`
+- Piper voice model: `runtime/assets/piper/en_US-amy-medium.onnx`
+
+Common environment overrides:
+
+- `JARVIS_PROJECT_DIR`, `JARVIS_VENV_DIR`, `JARVIS_LOG_FILE`, `JARVIS_LOCK_FILE`
+- `JARVIS_API_BASE_URL`, `JARVIS_API_URL`, `JARVIS_API_HEALTH_URL`, `JARVIS_API_MODEL`
+- `JARVIS_AUDIO_DEVICE`, `JARVIS_AUDIO_DEVICE_FALLBACKS`, `JARVIS_PLAYBACK_DEVICE`
+- `JARVIS_CONFIGURE_VOLUME`, `JARVIS_VOLUME_CARD`, `JARVIS_VOLUME_CONTROL`, `JARVIS_VOLUME_LEVEL`
+- `JARVIS_COMMAND_STT_ENGINE` (`whisper` or `vosk`)
+- `JARVIS_WHISPER_CPP_DIR`, `JARVIS_WHISPER_CPP_BINARY`, `JARVIS_WHISPER_MODEL_PATH`
+- `JARVIS_VOSK_MODEL_PATH`, `JARVIS_PIPER_MODEL_PATH`, `JARVIS_PIPER_BINARY`
+- `JARVIS_COMMAND_RECORDING_PATH`, `JARVIS_REPLY_WAV_PATH`
 
 ## 6. Notes
 
@@ -153,7 +190,8 @@ Jarvis uses Vosk for wake detection and local `whisper.cpp` for command transcri
 
 The `tiny.en` Whisper model is the smallest practical local Whisper model for this Pi. It is good for testing, but command transcription may still be slower than Vosk because Whisper records the whole command audio clip first, then transcribes it.
 
-On Mac or Windows, the Python package install is similar, but system audio dependencies and path values are different. For example, the Raspberry Pi uses `apt` and `/home/jarvis/...`; a Mac or Windows test setup needs its own project path, audio device names, and PortAudio setup.
+On Mac or Windows, Python setup is similar, but the full voice loop still
+expects ALSA commands for playback. The hardware-safe `self_test.py` does not.
 
 Jarvis validates that the chosen microphone supports the configured `SAMPLE_RATE` before opening it. If the USB microphone or speaker appears under a different card/device number, update `AUDIO_DEVICE`, `AUDIO_DEVICE_FALLBACKS`, `PLAYBACK_DEVICE`, `VOLUME_CARD`, and `VOLUME_CONTROL`.
 
@@ -188,8 +226,8 @@ In Whisper command mode, command capture looks like this:
 Listening for command with Whisper for up to 60 seconds...
 Recording command audio for up to 60 seconds...
 Whisper command recording detected speech after 1.0s (rms=1234).
-Stopped recording after 4.2s: speech followed by 1.2s silence; saved /home/jarvis/jarvis/logs/command.wav (peak rms=4567).
-Whisper transcribing /home/jarvis/jarvis/logs/command.wav...
+Stopped recording after 4.2s: speech followed by 1.2s silence; saved /path/to/pi-jarvis/logs/command.wav (peak rms=4567).
+Whisper transcribing /path/to/pi-jarvis/logs/command.wav...
 Whisper transcript after 3.3s: 'what is the weather today'
 Command: what is the weather today
 ```
@@ -203,12 +241,16 @@ Command: what is the weather today
 - `speech_to_text.py` and `detect_wake_word.py` - Vosk speech recognition and wake-word detection.
 - `call_agent_api.py` - HTTP calls to the Jarvis/Pasture agent API.
 - `text_to_speech.py` and `play_audio.py` - Piper TTS and ALSA playback.
+- `self_test.py` - local smoke test that avoids hardware, network, and Whisper.
+- `run_local.sh` - local development profile using bundled Vosk and default audio.
+- `pyproject.toml` and `uv.lock` - reproducible Python dependencies.
+- `tests/` - hardware- and network-independent automated tests.
 - `runtime/assets/` - local Vosk and Piper model assets copied from the Pi.
 
 ## 9. Troubleshooting
 
 - If startup fails with a Vosk model error, confirm `runtime/assets/vosk-model-small-en-us-0.15/` exists and matches `VOSK_MODEL_PATH`.
-- If command transcription fails with Whisper errors, confirm `/home/jarvis/whisper.cpp/build/bin/whisper-cli` and `/home/jarvis/whisper.cpp/models/ggml-tiny.en.bin` exist and match `WHISPER_CPP_BINARY` / `WHISPER_MODEL_PATH`.
+- If command transcription fails with Whisper errors, confirm the sibling `whisper.cpp/build/bin/whisper-cli` and `whisper.cpp/models/ggml-tiny.en.bin` paths exist, set the corresponding environment overrides, or use `run_local.sh` for Vosk transcription.
 - If Whisper records silence even when you speak, lower `COMMAND_AUDIO_RMS_THRESHOLD`; if it records background noise as speech, raise it.
 - If TTS fails, confirm `piper` is installed and `PIPER_MODEL_PATH` points to the `.onnx` voice model.
 - If the Pi cannot hear commands, run `python -m sounddevice` and update `AUDIO_DEVICE`.

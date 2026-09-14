@@ -1,0 +1,23 @@
+[project]
+name = "pi-jarvis"
+version = "0.1.0"
+description = "Voice assistant runtime for Raspberry Pi"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "piper-tts>=1.8.0,<2",
+    "requests>=2.34.2,<3",
+    "sounddevice>=0.5.6,<0.6",
+    "vosk>=0.3.45,<0.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

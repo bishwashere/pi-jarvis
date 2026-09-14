@@ -79,7 +79,7 @@ def calculate_rms(data: bytes) -> float:
 
 
 def write_wav(path: str, frames: list[bytes]):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with wave.open(path, "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)

@@ -1,11 +1,13 @@
 import queue
 import subprocess
 
-from config import PLAYBACK_DEVICE
-
-VOLUME_CARD = "2"
-VOLUME_CONTROL = "PCM"
-VOLUME_LEVEL = "85%"
+from config import (
+    CONFIGURE_VOLUME,
+    PLAYBACK_DEVICE,
+    VOLUME_CARD,
+    VOLUME_CONTROL,
+    VOLUME_LEVEL,
+)
 from detect_wake_word import WakeWordMonitor
 from interruptions import WakeWordInterrupted
 from listen_to_mic import audio_queue
@@ -24,6 +26,9 @@ def stop_process(process):
 
 
 def ensure_speaker_volume():
+    if not CONFIGURE_VOLUME:
+        return
+
     subprocess.run(
         ["amixer", "-c", VOLUME_CARD, "sset", VOLUME_CONTROL, VOLUME_LEVEL],
         stdout=subprocess.DEVNULL,
