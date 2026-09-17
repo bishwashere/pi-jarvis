@@ -318,8 +318,25 @@ def transcribe_with_whisper(audio_path: str) -> str:
 
 def listen_for_command_with_whisper(seconds: int) -> str:
     print(f"Listening for command with Whisper for up to {seconds} seconds...")
-    audio_path = record_command_audio(seconds)
-    return transcribe_with_whisper(audio_path)
+    deadline = time.time() + seconds
+
+    while time.time() < deadline:
+        remaining = max(1, int(deadline - time.time()))
+        audio_path = record_command_audio(remaining)
+        if not audio_path:
+            return ""
+
+        command = transcribe_with_whisper(audio_path)
+        if command:
+            return command
+
+        if time.time() < deadline:
+            print(
+                "No command in captured audio; still listening.",
+                flush=True,
+            )
+
+    return ""
 
 
 def listen_for_command(model, seconds: int = MAX_COMMAND_SECONDS, allow_wake_interrupt: bool = True) -> str:

@@ -21,6 +21,12 @@ from config import (
     WAKE_REPLIES,
     WAKE_WORDS,
 )
+from daily_context import (
+    choose_wake_reply,
+    contextualize_affirmative_command,
+    maybe_refresh_context_bucket_async,
+    record_utterance,
+)
 from detect_wake_word import WakeWordMonitor
 from interruptions import WakeWordInterrupted, wait_for_result_or_wake_word
 from listen_to_mic import (
@@ -80,6 +86,12 @@ def end_pasture_session_quietly():
 def speak(text: str, model=None):
     path = synthesize_to_wav(text)
     play_wav_file(path)
+
+
+def speak_wake_reply(model=None) -> str | None:
+    reply, source = choose_wake_reply(WAKE_REPLIES)
+    speak(reply, model=model)
+    return reply if source == "daily-context" else None
 
 
 def confirm_standby_if_served(served_turn: bool, model):
@@ -185,9 +197,15 @@ def ask_and_speak(user_text: str, model) -> bool:
     return True
 
 
+def prepare_command_for_api(command: str, wake_context_prompt: str | None, kind: str) -> str:
+    api_text = contextualize_affirmative_command(command, wake_context_prompt)
+    record_utterance(api_text, kind=kind)
+    return api_text
+
+
 def handle_conversation(model):
     clear_audio_queue()
-    speak(random.choice(WAKE_REPLIES))
+    wake_context_prompt = speak_wake_reply(model=model)
     served_turn = False
 
     command = get_command_with_retries(model)
@@ -199,7 +217,7 @@ def handle_conversation(model):
     while command:
         if is_wake_only_command(command):
             print("Wake-only command heard; repeating wake prompt.", flush=True)
-            speak(random.choice(WAKE_REPLIES), model=model)
+            wake_context_prompt = speak_wake_reply(model=model)
             command = get_command_with_retries(model)
             if not command:
                 print("No command heard after wake. Returning to wake word mode.", flush=True)
@@ -214,9 +232,16 @@ def handle_conversation(model):
 
         confirm_command_captured()
         print("Command:", command)
+        command_for_api = prepare_command_for_api(
+            command,
+            wake_context_prompt,
+            kind="command",
+        )
+        wake_context_prompt = None
 
         try:
-            should_continue = ask_and_speak(command, model)
+            should_continue = ask_and_speak(command_for_api, model)
+            maybe_refresh_context_bucket_async()
         except WakeWordInterrupted:
             command = get_command_with_retries(model)
             continue
@@ -260,15 +285,22 @@ def handle_conversation(model):
 
             if is_wake_only_command(followup):
                 print("Wake-only follow-up heard; repeating wake prompt.", flush=True)
-                speak(random.choice(WAKE_REPLIES), model=model)
+                wake_context_prompt = speak_wake_reply(model=model)
                 command = get_command_with_retries(model)
                 break
 
             confirm_command_captured()
             print("Follow-up:", followup)
+            followup_for_api = prepare_command_for_api(
+                followup,
+                wake_context_prompt,
+                kind="followup",
+            )
+            wake_context_prompt = None
 
             try:
-                should_continue = ask_and_speak(followup, model)
+                should_continue = ask_and_speak(followup_for_api, model)
+                maybe_refresh_context_bucket_async()
             except WakeWordInterrupted:
                 command = get_command_with_retries(model)
                 break

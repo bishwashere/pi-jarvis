@@ -9,6 +9,7 @@ import listen_to_mic
 import play_audio
 import text_to_speech
 from call_agent_api import parse_agent_reply
+from daily_context import contextualize_affirmative_command, parse_suggestions
 from detect_wake_word import get_wake_match
 from speech_to_text import (
     WAKE_ONLY_COMMAND,
@@ -41,6 +42,17 @@ def test_wake_word_and_text_cleanup():
     assert clean_command_transcript("Jarvis, what time is it?") == "what time is it"
     assert clean_for_tts("[Pasture] **Hello**   there") == "Hello there"
     assert calculate_rms(b"\x00\x00" * 20) == 0
+
+
+def test_daily_context_suggestions_and_affirmative_bridge():
+    assert parse_suggestions(
+        '{"suggestions":["Do you still want to check the weather?", "Open the camera?"]}'
+    ) == ["Do you still want to check the weather?", "Open the camera?"]
+    assert contextualize_affirmative_command(
+        "yes",
+        "Do you still want to check the weather?",
+    ) == "Yes. The wake prompt was: Do you still want to check the weather?"
+    assert contextualize_affirmative_command("what time is it", "Check weather?") == "what time is it"
 
 
 def test_write_wav_accepts_a_filename_without_a_directory(tmp_path, monkeypatch):

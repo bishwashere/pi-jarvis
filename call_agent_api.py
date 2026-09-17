@@ -5,6 +5,7 @@ import requests
 
 from config import (
     API_CONVERSATION_ID,
+    API_CONTEXT_CONVERSATION_ID,
     API_HEALTH_URL,
     API_MODEL,
     API_URL,
@@ -52,12 +53,18 @@ def parse_agent_reply(content: str) -> dict:
     }
 
 
-def ask_pasture(user_text: str) -> dict:
+def post_pasture_message(
+    user_text: str,
+    *,
+    conversation_id: str = API_CONVERSATION_ID,
+    timeout: int = 60,
+    log_label: str = "request",
+) -> str:
     log_api_event(
-        "request",
+        log_label,
         {
             "model": API_MODEL,
-            "conversation_id": API_CONVERSATION_ID,
+            "conversation_id": conversation_id,
             "user": user_text,
         },
     )
@@ -66,11 +73,11 @@ def ask_pasture(user_text: str) -> dict:
         API_URL,
         headers={
             "Content-Type": "application/json",
-            "X-Pasture-Conversation-Id": API_CONVERSATION_ID,
+            "X-Pasture-Conversation-Id": conversation_id,
         },
         json={
             "model": API_MODEL,
-            "conversation_id": API_CONVERSATION_ID,
+            "conversation_id": conversation_id,
             "messages": [
                 {
                     "role": "user",
@@ -78,16 +85,31 @@ def ask_pasture(user_text: str) -> dict:
                 },
             ],
         },
-        timeout=60,
+        timeout=timeout,
     )
 
     response.raise_for_status()
     data = response.json()
+    return data["choices"][0]["message"]["content"].strip()
 
-    content = data["choices"][0]["message"]["content"].strip()
+
+def ask_pasture(user_text: str) -> dict:
+    content = post_pasture_message(user_text)
+
     parsed = parse_agent_reply(content)
     log_api_event("response", {"raw": content, "parsed": parsed})
     return parsed
+
+
+def ask_pasture_for_daily_context(user_text: str) -> str:
+    content = post_pasture_message(
+        user_text,
+        conversation_id=API_CONTEXT_CONVERSATION_ID,
+        timeout=45,
+        log_label="context",
+    )
+    log_api_event("context_response", {"raw": content})
+    return content
 
 
 def start_new_pasture_session() -> bool:

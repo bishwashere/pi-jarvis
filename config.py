@@ -116,9 +116,13 @@ COMMAND_RECORDING_PATH = _env_path(
     "JARVIS_COMMAND_RECORDING_PATH",
     LOG_DIR / "command.wav",
 )
+DAILY_CONTEXT_PATH = _env_path(
+    "JARVIS_DAILY_CONTEXT_PATH",
+    LOG_DIR / "daily_context.json",
+)
 COMMAND_SILENCE_SECONDS = 2.0
 COMMAND_MIN_RECORD_SECONDS = 0.7
-COMMAND_AUDIO_RMS_THRESHOLD = 350
+COMMAND_AUDIO_RMS_THRESHOLD = 420
 WHISPER_TIMEOUT_SECONDS = 180
 
 
@@ -162,6 +166,10 @@ API_MODEL = os.environ.get("JARVIS_API_MODEL", "api-assistant")
 API_CONVERSATION_ID = os.environ.get(
     "JARVIS_API_CONVERSATION_ID",
     "raspberry-pi-jarvis",
+)
+API_CONTEXT_CONVERSATION_ID = os.environ.get(
+    "JARVIS_API_CONTEXT_CONVERSATION_ID",
+    f"{API_CONVERSATION_ID}-daily-context",
 )
 
 SYSTEM_PROMPT = (
@@ -258,3 +266,23 @@ MAX_TTS_CHARS = 700
 # False = after answer, listen only for FOLLOWUP_SECONDS, then return to wake mode.
 # True  = after every answer, keep listening like an active conversation.
 CONTINUE_LISTENING_DEFAULT = False
+
+
+# ---------- Daily context bucket ----------
+
+DAILY_CONTEXT_ENABLED = _env_bool("JARVIS_DAILY_CONTEXT_ENABLED", True)
+DAILY_CONTEXT_WAKE_REPLY_PROBABILITY = float(
+    os.environ.get("JARVIS_DAILY_CONTEXT_WAKE_REPLY_PROBABILITY", "0.35")
+)
+DAILY_CONTEXT_MIN_UTTERANCES = int(
+    os.environ.get("JARVIS_DAILY_CONTEXT_MIN_UTTERANCES", "1")
+)
+DAILY_CONTEXT_REFRESH_SECONDS = float(
+    os.environ.get("JARVIS_DAILY_CONTEXT_REFRESH_SECONDS", "120")
+)
+DAILY_CONTEXT_MAX_UTTERANCES = int(
+    os.environ.get("JARVIS_DAILY_CONTEXT_MAX_UTTERANCES", "40")
+)
+DAILY_CONTEXT_MAX_SUGGESTIONS = int(
+    os.environ.get("JARVIS_DAILY_CONTEXT_MAX_SUGGESTIONS", "8")
+)
