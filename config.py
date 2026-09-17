@@ -129,11 +129,13 @@ WHISPER_TIMEOUT_SECONDS = 180
 WAKE_WORDS = [
     "hello jarvis",
     "hey jarvis",
+    "hi jarvis",
     "hello computer",
     "hey computer",
     "jarvis",
     "computer",
     "hello",
+    "hi",
 ]
 
 # 0 = only wake on exact phrases in WAKE_WORDS.

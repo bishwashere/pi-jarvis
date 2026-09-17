@@ -29,6 +29,19 @@ def iter_candidate_phrases(heard: str):
             yield " ".join(words[start : start + phrase_length])
 
 
+def contains_phrase(heard: str, phrase: str) -> bool:
+    heard_words = heard.split()
+    phrase_words = phrase.split()
+    if not phrase_words or len(phrase_words) > len(heard_words):
+        return False
+
+    for start in range(len(heard_words) - len(phrase_words) + 1):
+        if heard_words[start : start + len(phrase_words)] == phrase_words:
+            return True
+
+    return False
+
+
 def wake_similarity(candidate: str, wake: str) -> float:
     if not candidate or candidate[0] != wake[0]:
         return 0.0
@@ -45,7 +58,7 @@ def get_wake_match(text: str, allow_lenient: bool = True) -> dict:
         return {"triggered": False}
 
     for wake in WAKE_WORDS:
-        if wake in heard:
+        if contains_phrase(heard, wake):
             return {
                 "triggered": True,
                 "mode": "strict",
@@ -105,7 +118,7 @@ def get_wake_match(text: str, allow_lenient: bool = True) -> dict:
 
 def has_strict_wake_word(text: str) -> bool:
     heard = normalize_text(text)
-    return any(wake in heard for wake in WAKE_WORDS)
+    return any(contains_phrase(heard, wake) for wake in WAKE_WORDS)
 
 
 def has_wake_word(text: str) -> bool:

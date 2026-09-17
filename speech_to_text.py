@@ -130,14 +130,29 @@ def clean_command_transcript(text: str) -> str:
 def remove_wake_words(text: str) -> str:
     cleaned = text.lower().strip()
     wake_phrases = sorted(
-        WAKE_WORDS,
-        key=len,
+        [wake.split() for wake in WAKE_WORDS],
+        key=lambda words: len(words),
         reverse=True,
     )
-    for wake in wake_phrases:
-        cleaned = cleaned.replace(wake, " ")
 
-    return " ".join(cleaned.split())
+    words = cleaned.split()
+    output = []
+    index = 0
+    while index < len(words):
+        matched_length = 0
+        for wake_words in wake_phrases:
+            if words[index : index + len(wake_words)] == wake_words:
+                matched_length = len(wake_words)
+                break
+
+        if matched_length:
+            index += matched_length
+            continue
+
+        output.append(words[index])
+        index += 1
+
+    return " ".join(output)
 
 
 def handle_wake_phrase_during_command(text: str, start: float) -> str | None:
