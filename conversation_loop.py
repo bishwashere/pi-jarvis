@@ -27,7 +27,7 @@ from listen_to_mic import (
     open_microphone_stream,
     reset_audio_device_selection,
 )
-from play_audio import play_online_tone, play_wav_file
+from play_audio import play_command_captured_tone, play_online_tone, play_wav_file
 from speech_to_text import listen_for_command
 from text_to_speech import synthesize_to_wav
 
@@ -79,6 +79,13 @@ def speak(text: str, model=None):
 def confirm_standby_if_served(served_turn: bool, model):
     if served_turn:
         speak(random.choice(STANDBY_REPLIES), model=model)
+
+
+def confirm_command_captured():
+    try:
+        play_command_captured_tone()
+    except Exception as e:
+        print("Command captured tone failed:", e, flush=True)
 
 
 def get_command_with_retries(model) -> str:
@@ -184,6 +191,7 @@ def handle_conversation(model):
             confirm_standby_if_served(served_turn, model)
             return
 
+        confirm_command_captured()
         print("Command:", command)
 
         try:
@@ -229,6 +237,7 @@ def handle_conversation(model):
                 command = ""
                 return
 
+            confirm_command_captured()
             print("Follow-up:", followup)
 
             try:

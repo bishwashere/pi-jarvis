@@ -22,6 +22,7 @@ from listen_to_mic import audio_queue
 
 
 ONLINE_TONE_PATH = "/tmp/jarvis-online.wav"
+COMMAND_CAPTURED_TONE_PATH = "/tmp/jarvis-command-captured.wav"
 TONE_SAMPLE_RATE = 16000
 PLAYBACK_FALLBACK_DEVICES = ["default"]
 
@@ -103,6 +104,20 @@ def play_online_tone():
         ],
     )
     play_wav_file(ONLINE_TONE_PATH)
+
+
+def play_command_captured_tone():
+    os.makedirs(os.path.dirname(COMMAND_CAPTURED_TONE_PATH), exist_ok=True)
+    write_tone(
+        COMMAND_CAPTURED_TONE_PATH,
+        [
+            (1318.5, 0.055),
+            (0.0, 0.025),
+            (1760.0, 0.075),
+        ],
+        volume=0.22,
+    )
+    play_wav_file(COMMAND_CAPTURED_TONE_PATH)
 
 
 def alsa_devices():
