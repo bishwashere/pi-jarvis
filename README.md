@@ -196,6 +196,16 @@ Start it immediately with the same launcher:
 nohup /home/jarvis/jarvis/run_jarvis.sh >/dev/null 2>&1 &
 ```
 
+For manual control after installing `bin/jarvis` to `/usr/local/bin/jarvis`:
+
+```sh
+jarvis stop
+jarvis start
+jarvis restart
+jarvis status
+jarvis logs
+```
+
 ## 5. Configuration Reference
 
 Defaults live in `config.py`. Repository assets and logs are resolved from the

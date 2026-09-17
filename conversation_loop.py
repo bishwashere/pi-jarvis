@@ -1,22 +1,19 @@
+import random
 import time
 
 import requests
 from vosk import Model
 
-from call_agent_api import ask_pasture, check_agent_health
+from call_agent_api import ask_pasture, check_agent_health, start_new_pasture_session
 from config import (
-    API_ERROR_REPLY,
     API_RETRY_COUNT,
-    API_RETRY_REPLY,
     COMMAND_RETRY_COUNT,
     FOLLOWUP_SECONDS,
     GENERIC_ERROR_REPLY,
-    HEALTH_ERROR_REPLY,
-    HEALTH_OK_REPLY,
     LENIENT_WAKE_LEVEL,
     MAX_COMMAND_SECONDS,
     VOSK_MODEL_PATH,
-    WAKE_REPLY,
+    WAKE_REPLIES,
     WAKE_WORDS,
 )
 from detect_wake_word import WakeWordMonitor
@@ -27,9 +24,48 @@ from listen_to_mic import (
     open_microphone_stream,
     reset_audio_device_selection,
 )
-from play_audio import play_wav_file
+from play_audio import play_online_tone, play_wav_file
 from speech_to_text import listen_for_command
 from text_to_speech import synthesize_to_wav
+
+
+END_SESSION_PHRASES = {
+    "bye",
+    "bye jarvis",
+    "cancel",
+    "cancel jarvis",
+    "do nothing",
+    "do nothing jarvis",
+    "good bye",
+    "good bye jarvis",
+    "goodbye",
+    "goodbye jarvis",
+    "nevermind",
+    "nevermind jarvis",
+    "never mind",
+    "never mind jarvis",
+    "no command",
+    "no command jarvis",
+    "nothing",
+    "nothing jarvis",
+    "stop",
+    "stop jarvis",
+}
+
+
+def normalize_command(text: str) -> str:
+    cleaned = text.lower().strip()
+    cleaned = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in cleaned)
+    return " ".join(cleaned.split())
+
+
+def is_end_session_command(text: str) -> bool:
+    return normalize_command(text) in END_SESSION_PHRASES
+
+
+def end_pasture_session_quietly():
+    if not start_new_pasture_session():
+        print("Could not reset Pasture session; returning to wake word mode.", flush=True)
 
 
 def speak(text: str, model=None):
@@ -57,6 +93,28 @@ def get_command_with_retries(model) -> str:
     return ""
 
 
+def get_followup_until(model, seconds: int) -> str:
+    deadline = time.time() + seconds
+
+    while time.time() < deadline:
+        remaining = max(1, int(deadline - time.time()))
+        try:
+            followup = listen_for_command(model, seconds=remaining)
+        except WakeWordInterrupted:
+            raise
+
+        if followup:
+            return followup
+
+        if time.time() < deadline:
+            print(
+                "No follow-up command heard yet; still waiting.",
+                flush=True,
+            )
+
+    return ""
+
+
 def ask_and_speak(user_text: str, model) -> bool:
     for attempt in range(API_RETRY_COUNT):
         try:
@@ -76,11 +134,11 @@ def ask_and_speak(user_text: str, model) -> bool:
             print("API error:", e)
 
             if attempt < API_RETRY_COUNT - 1:
-                speak(API_RETRY_REPLY, model=model)
+                print("Retrying Pasture request silently.", flush=True)
                 continue
 
-            speak(API_ERROR_REPLY, model=model)
-            return True
+            print("Pasture request failed after retries; returning to wake word mode.", flush=True)
+            return None
 
         except Exception as e:
             print("Unexpected error:", e)
@@ -92,7 +150,7 @@ def ask_and_speak(user_text: str, model) -> bool:
 
 def handle_conversation(model):
     clear_audio_queue()
-    speak(WAKE_REPLY)
+    speak(random.choice(WAKE_REPLIES))
 
     command = get_command_with_retries(model)
 
@@ -101,6 +159,11 @@ def handle_conversation(model):
         return
 
     while command:
+        if is_end_session_command(command):
+            print("End-session command heard. Returning to wake word mode.", flush=True)
+            end_pasture_session_quietly()
+            return
+
         print("Command:", command)
 
         try:
@@ -109,12 +172,15 @@ def handle_conversation(model):
             command = get_command_with_retries(model)
             continue
 
+        if should_continue is None:
+            return
+
         while True:
             listen_seconds = MAX_COMMAND_SECONDS if should_continue else FOLLOWUP_SECONDS
             listen_started_at = time.time()
 
             try:
-                followup = listen_for_command(model, seconds=listen_seconds)
+                followup = get_followup_until(model, listen_seconds)
             except WakeWordInterrupted:
                 print(
                     "Wake phrase interrupted follow-up listening; listening for command.",
@@ -132,6 +198,12 @@ def handle_conversation(model):
                 )
                 command = ""
                 break
+
+            if is_end_session_command(followup):
+                print("End-session follow-up heard. Returning to wake word mode.", flush=True)
+                end_pasture_session_quietly()
+                command = ""
+                return
 
             print("Follow-up:", followup)
 
@@ -156,11 +228,10 @@ def run_assistant():
 
     try:
         check_agent_health()
-        print("Jarvis agent health check passed.")
-        speak(HEALTH_OK_REPLY)
+        print("Jarvis agent health check passed; playing online tone.")
+        play_online_tone()
     except Exception as e:
         print("Jarvis agent health check failed:", e)
-        speak(HEALTH_ERROR_REPLY)
 
     while True:
         print("Waiting for wake word...", flush=True)

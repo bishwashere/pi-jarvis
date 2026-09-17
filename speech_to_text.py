@@ -27,6 +27,106 @@ from detect_wake_word import has_strict_wake_word
 from listen_to_mic import audio_queue, clear_audio_queue, open_microphone_stream
 
 
+NON_COMMAND_CUE_WORDS = {
+    "ambient",
+    "applause",
+    "audio",
+    "background",
+    "blank",
+    "clapping",
+    "dramatic",
+    "instrumental",
+    "intro",
+    "laugh",
+    "laughing",
+    "laughter",
+    "music",
+    "noise",
+    "noises",
+    "outro",
+    "playing",
+    "silence",
+    "sound",
+    "sounds",
+    "upbeat",
+}
+
+NON_COMMAND_EXACT_PHRASES = {
+    "background music",
+    "background noise",
+    "blank audio",
+    "dramatic music",
+    "instrumental music",
+    "music",
+    "music playing",
+    "no command",
+    "noise",
+    "silence",
+    "sound",
+    "sounds",
+}
+
+
+def is_only_bracketed_cues(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+
+    while stripped:
+        stripped = stripped.strip()
+        if not stripped:
+            return True
+
+        opener = stripped[0]
+        closer = {"[": "]", "(": ")"}.get(opener)
+        if closer is None:
+            return False
+
+        end = stripped.find(closer, 1)
+        if end < 0:
+            return False
+
+        content = stripped[1:end].strip()
+        if not content:
+            return False
+
+        stripped = stripped[end + 1 :]
+
+    return True
+
+
+def normalize_transcript(text: str) -> str:
+    cleaned = text.lower().strip()
+    cleaned = cleaned.replace("[", " ").replace("]", " ")
+    cleaned = cleaned.replace("(", " ").replace(")", " ")
+    cleaned = cleaned.replace("{", " ").replace("}", " ")
+    cleaned = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in cleaned)
+    return " ".join(cleaned.split())
+
+
+def is_non_command_transcript(text: str) -> bool:
+    if is_only_bracketed_cues(text):
+        return True
+
+    normalized = normalize_transcript(text)
+    if not normalized:
+        return True
+
+    if normalized in NON_COMMAND_EXACT_PHRASES:
+        return True
+
+    words = normalized.split()
+    return all(word in NON_COMMAND_CUE_WORDS for word in words)
+
+
+def clean_command_transcript(text: str) -> str:
+    if is_non_command_transcript(text):
+        print(f"Ignoring non-command transcript: {text!r}", flush=True)
+        return ""
+
+    return remove_wake_words(text)
+
+
 def remove_wake_words(text: str) -> str:
     cleaned = text.lower().strip()
     wake_phrases = sorted(
@@ -196,7 +296,7 @@ def transcribe_with_whisper(audio_path: str) -> str:
 
     transcript = " ".join(result.stdout.split()).strip()
     print(f"Whisper transcript after {elapsed:.1f}s: {transcript!r}", flush=True)
-    return remove_wake_words(transcript)
+    return clean_command_transcript(transcript)
 
 
 def listen_for_command_with_whisper(seconds: int) -> str:
@@ -274,7 +374,7 @@ def listen_for_command(model, seconds: int = MAX_COMMAND_SECONDS, allow_wake_int
             f"Stopped listening after {elapsed:.1f}s: "
             f"{stop_reason}; using partial transcript."
         )
-        return last_partial
+        return clean_command_transcript(last_partial)
 
     command = " ".join(final_parts).strip()
     if command:
@@ -282,4 +382,4 @@ def listen_for_command(model, seconds: int = MAX_COMMAND_SECONDS, allow_wake_int
     else:
         print(f"Stopped listening after {elapsed:.1f}s: no speech heard.")
 
-    return command
+    return clean_command_transcript(command)

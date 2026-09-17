@@ -11,7 +11,6 @@ from config import (
     WAKE_WORDS,
 )
 
-
 def normalize_text(text: str) -> str:
     return " ".join(text.lower().strip().split())
 
@@ -34,10 +33,13 @@ def wake_similarity(candidate: str, wake: str) -> float:
     if not candidate or candidate[0] != wake[0]:
         return 0.0
 
+    if len(candidate) < 3 or len(candidate) < len(wake) * 0.6:
+        return 0.0
+
     return SequenceMatcher(None, candidate, wake).ratio()
 
 
-def get_wake_match(text: str) -> dict:
+def get_wake_match(text: str, allow_lenient: bool = True) -> dict:
     heard = normalize_text(text)
     if not heard:
         return {"triggered": False}
@@ -52,6 +54,9 @@ def get_wake_match(text: str) -> dict:
                 "candidate": wake,
                 "score": 1.0,
             }
+
+    if not allow_lenient:
+        return {"triggered": False, "heard": heard, "mode": "strict-only"}
 
     level = max(0, min(100, LENIENT_WAKE_LEVEL))
     if level <= 0:
@@ -112,9 +117,11 @@ class WakeWordMonitor:
         self.model = model
         self.recognizer = KaldiRecognizer(model, SAMPLE_RATE)
         self.last_trigger_time = 0
+        self.last_partial = ""
 
     def reset(self):
         self.recognizer = KaldiRecognizer(self.model, SAMPLE_RATE)
+        self.last_partial = ""
 
     def log_wake_match(self, match: dict, source: str):
         if match.get("mode") == "strict":
@@ -141,7 +148,11 @@ class WakeWordMonitor:
     def accept_audio(self, data: bytes) -> bool:
         if not self.recognizer.AcceptWaveform(data):
             partial = json.loads(self.recognizer.PartialResult()).get("partial", "")
-            match = get_wake_match(partial)
+            if partial and partial != self.last_partial:
+                print(f"Heard partial: {partial}", flush=True)
+                self.last_partial = partial
+
+            match = get_wake_match(partial, allow_lenient=False)
             if match["triggered"]:
                 self.log_wake_match(match, source="partial")
             return match["triggered"]

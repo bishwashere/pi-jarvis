@@ -4,11 +4,11 @@ from datetime import datetime
 import requests
 
 from config import (
+    API_CONVERSATION_ID,
     API_HEALTH_URL,
     API_MODEL,
     API_URL,
     CONTINUE_LISTENING_DEFAULT,
-    SYSTEM_PROMPT,
 )
 
 
@@ -53,18 +53,25 @@ def parse_agent_reply(content: str) -> dict:
 
 
 def ask_pasture(user_text: str) -> dict:
-    log_api_event("request", {"model": API_MODEL, "user": user_text})
+    log_api_event(
+        "request",
+        {
+            "model": API_MODEL,
+            "conversation_id": API_CONVERSATION_ID,
+            "user": user_text,
+        },
+    )
 
     response = requests.post(
         API_URL,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "X-Pasture-Conversation-Id": API_CONVERSATION_ID,
+        },
         json={
             "model": API_MODEL,
+            "conversation_id": API_CONVERSATION_ID,
             "messages": [
-                {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT,
-                },
                 {
                     "role": "user",
                     "content": user_text,
@@ -81,6 +88,47 @@ def ask_pasture(user_text: str) -> dict:
     parsed = parse_agent_reply(content)
     log_api_event("response", {"raw": content, "parsed": parsed})
     return parsed
+
+
+def start_new_pasture_session() -> bool:
+    try:
+        response = requests.post(
+            API_URL,
+            headers={
+                "Content-Type": "application/json",
+                "X-Pasture-Conversation-Id": API_CONVERSATION_ID,
+            },
+            json={
+                "model": API_MODEL,
+                "conversation_id": API_CONVERSATION_ID,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "new session",
+                    },
+                ],
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        log_api_event(
+            "session",
+            {
+                "conversation_id": API_CONVERSATION_ID,
+                "status": "new session started",
+            },
+        )
+        return True
+    except Exception as e:
+        log_api_event(
+            "session",
+            {
+                "conversation_id": API_CONVERSATION_ID,
+                "status": "new session failed",
+                "error": str(e),
+            },
+        )
+        return False
 
 
 def check_agent_health() -> bool:

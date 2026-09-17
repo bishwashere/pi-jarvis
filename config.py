@@ -116,7 +116,7 @@ COMMAND_RECORDING_PATH = _env_path(
     "JARVIS_COMMAND_RECORDING_PATH",
     LOG_DIR / "command.wav",
 )
-COMMAND_SILENCE_SECONDS = 1.2
+COMMAND_SILENCE_SECONDS = 2.0
 COMMAND_MIN_RECORD_SECONDS = 0.7
 COMMAND_AUDIO_RMS_THRESHOLD = 350
 WHISPER_TIMEOUT_SECONDS = 180
@@ -157,10 +157,15 @@ API_HEALTH_URL = os.environ.get(
     f"{API_BASE_URL}/health",
 )
 API_MODEL = os.environ.get("JARVIS_API_MODEL", "api-assistant")
+API_CONVERSATION_ID = os.environ.get(
+    "JARVIS_API_CONVERSATION_ID",
+    "raspberry-pi-jarvis",
+)
 
 SYSTEM_PROMPT = (
     "You are a voice assistant running through a Raspberry Pi. "
-    "Keep replies short and natural. Usually answer in one or two sentences. "
+    "Keep replies short and natural. Usually answer in one short phrase or one short sentence. "
+    "Expand only when the user asks you to explain or asks for details. "
     "Do not use markdown. "
     "If you need the user to clarify, if you think speech recognition misunderstood them, "
     "or if the task is incomplete, return JSON exactly like this: "
@@ -175,8 +180,8 @@ SYSTEM_PROMPT = (
 # How long to listen for the first command after wake.
 MAX_COMMAND_SECONDS = 60
 
-# How long to listen after an answer for natural follow-up.
-FOLLOWUP_SECONDS = 4
+# How long to wait after an answer for a natural follow-up.
+FOLLOWUP_SECONDS = 20
 
 # Prevent duplicate wake triggers.
 DUPLICATE_WAKE_SECONDS = 3
@@ -203,9 +208,13 @@ REPLY_WAV_PATH = _env_path("JARVIS_REPLY_WAV_PATH", LOG_DIR / "reply.wav")
 # Startup / assistant phrases.
 HEALTH_OK_REPLY = "Jarvis agent is online."
 HEALTH_ERROR_REPLY = "Jarvis agent health check failed."
-WAKE_REPLY = "Hi. How can I help?"
-API_RETRY_REPLY = "One second. I am trying again."
-API_ERROR_REPLY = "I could not reach Pasture."
+WAKE_REPLIES = [
+    "Hi.",
+    "Hello.",
+    "Hey.",
+    "Hi. How can I help?",
+    "Hello. What can I do?",
+]
 GENERIC_ERROR_REPLY = "Something went wrong."
 EMPTY_RESPONSE_REPLY = "I have no response."
 

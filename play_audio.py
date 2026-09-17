@@ -1,7 +1,10 @@
+import math
+import os
 import queue
 import subprocess
 import sys
 import wave
+from array import array
 
 import sounddevice as sd
 
@@ -16,6 +19,11 @@ from config import (
 from detect_wake_word import WakeWordMonitor
 from interruptions import WakeWordInterrupted
 from listen_to_mic import audio_queue
+
+
+ONLINE_TONE_PATH = "/tmp/jarvis-online.wav"
+TONE_SAMPLE_RATE = 16000
+PLAYBACK_FALLBACK_DEVICES = ["default"]
 
 
 def stop_process(process):
@@ -62,41 +70,98 @@ def sounddevice_output_device(device):
     return device
 
 
-def play_wav_with_alsa(path: str, model=None):
-    ensure_speaker_volume()
+def write_tone(path: str, notes: list[tuple[float, float]], volume: float = 0.35):
+    samples = array("h")
+    amplitude = int(32767 * volume)
 
-    aplay = subprocess.Popen(
-        [
-            "aplay",
-            "-D",
-            str(PLAYBACK_DEVICE),
-            path,
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-
-    if model is None:
-        _, stderr = aplay.communicate()
-        if aplay.returncode != 0:
-            print("aplay error:", stderr.strip())
-        return
-
-    monitor = WakeWordMonitor(model)
-
-    try:
-        while aplay.poll() is None:
-            try:
-                data = audio_queue.get(timeout=0.1)
-            except queue.Empty:
+    for frequency, duration in notes:
+        frame_count = int(TONE_SAMPLE_RATE * duration)
+        for frame in range(frame_count):
+            if frequency <= 0:
+                samples.append(0)
                 continue
 
-            if monitor.accept_audio(data):
-                stop_process(aplay)
-                raise WakeWordInterrupted()
-    finally:
-        stop_process(aplay)
+            envelope = min(1.0, frame / 400, (frame_count - frame) / 400)
+            value = math.sin(2 * math.pi * frequency * frame / TONE_SAMPLE_RATE)
+            samples.append(int(amplitude * envelope * value))
+
+    with wave.open(path, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(TONE_SAMPLE_RATE)
+        wav.writeframes(samples.tobytes())
+
+
+def play_online_tone():
+    os.makedirs(os.path.dirname(ONLINE_TONE_PATH), exist_ok=True)
+    write_tone(
+        ONLINE_TONE_PATH,
+        [
+            (784.0, 0.11),
+            (0.0, 0.04),
+            (1046.5, 0.15),
+        ],
+    )
+    play_wav_file(ONLINE_TONE_PATH)
+
+
+def alsa_devices():
+    devices = [str(PLAYBACK_DEVICE)]
+    for device in PLAYBACK_FALLBACK_DEVICES:
+        device = str(device)
+        if device not in devices:
+            devices.append(device)
+    return devices
+
+
+def play_wav_with_alsa(path: str, model=None):
+    ensure_speaker_volume()
+    devices = alsa_devices()
+
+    for index, device in enumerate(devices):
+        aplay = subprocess.Popen(
+            [
+                "aplay",
+                "-D",
+                device,
+                path,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        if model is None:
+            _, stderr = aplay.communicate()
+            if aplay.returncode == 0:
+                return
+
+            print(f"aplay error on {device}:", stderr.strip())
+            if index < len(devices) - 1:
+                continue
+
+            return
+
+        monitor = WakeWordMonitor(model)
+
+        try:
+            while aplay.poll() is None:
+                try:
+                    data = audio_queue.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+
+                if monitor.accept_audio(data):
+                    stop_process(aplay)
+                    raise WakeWordInterrupted()
+        finally:
+            stop_process(aplay)
+
+        _, stderr = aplay.communicate()
+        if aplay.returncode == 0:
+            return
+
+        print(f"aplay error on {device}:", stderr.strip())
 
 
 def play_wav_with_sounddevice(path: str, model=None):
