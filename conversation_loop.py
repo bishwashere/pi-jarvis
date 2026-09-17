@@ -30,7 +30,7 @@ from listen_to_mic import (
     reset_audio_device_selection,
 )
 from play_audio import play_command_captured_tone, play_online_tone, play_wav_file
-from speech_to_text import listen_for_command
+from speech_to_text import WAKE_ONLY_COMMAND, listen_for_command
 from text_to_speech import synthesize_to_wav
 
 
@@ -66,6 +66,10 @@ def normalize_command(text: str) -> str:
 
 def is_end_session_command(text: str) -> bool:
     return normalize_command(text) in END_SESSION_PHRASES
+
+
+def is_wake_only_command(text: str) -> bool:
+    return text == WAKE_ONLY_COMMAND
 
 
 def end_pasture_session_quietly():
@@ -193,6 +197,15 @@ def handle_conversation(model):
         return
 
     while command:
+        if is_wake_only_command(command):
+            print("Wake-only command heard; repeating wake prompt.", flush=True)
+            speak(random.choice(WAKE_REPLIES), model=model)
+            command = get_command_with_retries(model)
+            if not command:
+                print("No command heard after wake. Returning to wake word mode.", flush=True)
+                return
+            continue
+
         if is_end_session_command(command):
             print("End-session command heard. Returning to wake word mode.", flush=True)
             end_pasture_session_quietly()
@@ -244,6 +257,12 @@ def handle_conversation(model):
                 confirm_standby_if_served(served_turn, model)
                 command = ""
                 return
+
+            if is_wake_only_command(followup):
+                print("Wake-only follow-up heard; repeating wake prompt.", flush=True)
+                speak(random.choice(WAKE_REPLIES), model=model)
+                command = get_command_with_retries(model)
+                break
 
             confirm_command_captured()
             print("Follow-up:", followup)

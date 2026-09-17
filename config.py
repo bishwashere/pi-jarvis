@@ -234,9 +234,11 @@ STILL_CHECKING_REPLIES = [
 ]
 STILL_CHECKING_REPLY_DELAY_SECONDS = 3.0
 STANDBY_REPLIES = [
-    "Standing by.",
-    "Back on wake word.",
-    "I'll stand by.",
+    "Resting now.",
+    "Talk to you later.",
+    "I'll be here.",
+    "Going quiet.",
+    "Sleep mode.",
 ]
 GENERIC_ERROR_REPLY = "Something went wrong."
 EMPTY_RESPONSE_REPLY = "I have no response."

@@ -27,6 +27,9 @@ from detect_wake_word import has_strict_wake_word
 from listen_to_mic import audio_queue, clear_audio_queue, open_microphone_stream
 
 
+WAKE_ONLY_COMMAND = "__jarvis_wake_only__"
+
+
 NON_COMMAND_CUE_WORDS = {
     "ambient",
     "applause",
@@ -124,11 +127,16 @@ def clean_command_transcript(text: str) -> str:
         print(f"Ignoring non-command transcript: {text!r}", flush=True)
         return ""
 
-    return remove_wake_words(text)
+    normalized = normalize_transcript(text)
+    command = remove_wake_words(normalized)
+    if has_strict_wake_word(normalized) and not command:
+        return WAKE_ONLY_COMMAND
+
+    return command
 
 
 def remove_wake_words(text: str) -> str:
-    cleaned = text.lower().strip()
+    cleaned = normalize_transcript(text)
     wake_phrases = sorted(
         [wake.split() for wake in WAKE_WORDS],
         key=lambda words: len(words),

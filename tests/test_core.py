@@ -10,7 +10,13 @@ import play_audio
 import text_to_speech
 from call_agent_api import parse_agent_reply
 from detect_wake_word import get_wake_match
-from speech_to_text import calculate_rms, remove_wake_words, write_wav
+from speech_to_text import (
+    WAKE_ONLY_COMMAND,
+    calculate_rms,
+    clean_command_transcript,
+    remove_wake_words,
+    write_wav,
+)
 from text_to_speech import clean_for_tts
 
 
@@ -30,6 +36,9 @@ def test_parse_agent_reply_supports_plain_text_and_json():
 def test_wake_word_and_text_cleanup():
     assert get_wake_match("hey jarvis")["triggered"] is True
     assert remove_wake_words("hey jarvis tell me the time") == "tell me the time"
+    assert clean_command_transcript("Hi.") == WAKE_ONLY_COMMAND
+    assert clean_command_transcript("hello computer?") == WAKE_ONLY_COMMAND
+    assert clean_command_transcript("Jarvis, what time is it?") == "what time is it"
     assert clean_for_tts("[Pasture] **Hello**   there") == "Hello there"
     assert calculate_rms(b"\x00\x00" * 20) == 0
 
