@@ -7,11 +7,13 @@ from vosk import Model
 from call_agent_api import ask_pasture, check_agent_health, start_new_pasture_session
 from config import (
     API_RETRY_COUNT,
+    CHECKING_REPLIES,
     COMMAND_RETRY_COUNT,
     FOLLOWUP_SECONDS,
     GENERIC_ERROR_REPLY,
     LENIENT_WAKE_LEVEL,
     MAX_COMMAND_SECONDS,
+    STANDBY_REPLIES,
     VOSK_MODEL_PATH,
     WAKE_REPLIES,
     WAKE_WORDS,
@@ -73,6 +75,11 @@ def speak(text: str, model=None):
     play_wav_file(path)
 
 
+def confirm_standby_if_served(served_turn: bool, model):
+    if served_turn:
+        speak(random.choice(STANDBY_REPLIES), model=model)
+
+
 def get_command_with_retries(model) -> str:
     for attempt in range(COMMAND_RETRY_COUNT):
         try:
@@ -118,7 +125,16 @@ def get_followup_until(model, seconds: int) -> str:
 def ask_and_speak(user_text: str, model) -> bool:
     for attempt in range(API_RETRY_COUNT):
         try:
-            result = wait_for_result_or_wake_word(ask_pasture, model, user_text)
+            result = wait_for_result_or_wake_word(
+                ask_pasture,
+                model,
+                user_text,
+                on_wait_start=(
+                    lambda: speak(random.choice(CHECKING_REPLIES), model=model)
+                    if attempt == 0
+                    else None
+                ),
+            )
 
             reply = result.get("reply", "")
             continue_listening = bool(result.get("continue_listening", False))
@@ -151,6 +167,7 @@ def ask_and_speak(user_text: str, model) -> bool:
 def handle_conversation(model):
     clear_audio_queue()
     speak(random.choice(WAKE_REPLIES))
+    served_turn = False
 
     command = get_command_with_retries(model)
 
@@ -162,6 +179,7 @@ def handle_conversation(model):
         if is_end_session_command(command):
             print("End-session command heard. Returning to wake word mode.", flush=True)
             end_pasture_session_quietly()
+            confirm_standby_if_served(served_turn, model)
             return
 
         print("Command:", command)
@@ -174,6 +192,8 @@ def handle_conversation(model):
 
         if should_continue is None:
             return
+
+        served_turn = True
 
         while True:
             listen_seconds = MAX_COMMAND_SECONDS if should_continue else FOLLOWUP_SECONDS
@@ -196,12 +216,14 @@ def handle_conversation(model):
                     f"(listen window: {listen_seconds}s). "
                     "Returning to wake word mode."
                 )
+                confirm_standby_if_served(served_turn, model)
                 command = ""
                 break
 
             if is_end_session_command(followup):
                 print("End-session follow-up heard. Returning to wake word mode.", flush=True)
                 end_pasture_session_quietly()
+                confirm_standby_if_served(served_turn, model)
                 command = ""
                 return
 
@@ -213,6 +235,10 @@ def handle_conversation(model):
                 command = get_command_with_retries(model)
                 break
 
+            if should_continue is None:
+                return
+
+            served_turn = True
             command = ""
 
 

@@ -9,12 +9,21 @@ class WakeWordInterrupted(Exception):
     """Raised when the wake word is heard during another operation."""
 
 
-def wait_for_result_or_wake_word(callable_fn, model, *args, **kwargs):
+def wait_for_result_or_wake_word(
+    callable_fn,
+    model,
+    *args,
+    on_wait_start=None,
+    **kwargs,
+):
     monitor = WakeWordMonitor(model)
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     future = executor.submit(callable_fn, *args, **kwargs)
 
     try:
+        if on_wait_start is not None:
+            on_wait_start()
+
         clear_audio_queue()
         with open_microphone_stream():
             while True:

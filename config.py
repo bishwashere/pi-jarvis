@@ -215,6 +215,18 @@ WAKE_REPLIES = [
     "Hi. How can I help?",
     "Hello. What can I do?",
 ]
+CHECKING_REPLIES = [
+    "Let me check.",
+    "Checking.",
+    "One moment.",
+    "Let me look.",
+    "I'll check.",
+]
+STANDBY_REPLIES = [
+    "Standing by.",
+    "Back on wake word.",
+    "I'll stand by.",
+]
 GENERIC_ERROR_REPLY = "Something went wrong."
 EMPTY_RESPONSE_REPLY = "I have no response."
 
