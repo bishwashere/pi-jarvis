@@ -15,6 +15,8 @@ from config import (
     LENIENT_WAKE_LEVEL,
     MAX_COMMAND_SECONDS,
     STANDBY_REPLIES,
+    STILL_CHECKING_REPLIES,
+    STILL_CHECKING_REPLY_DELAY_SECONDS,
     VOSK_MODEL_PATH,
     WAKE_REPLIES,
     WAKE_WORDS,
@@ -143,6 +145,12 @@ def ask_and_speak(user_text: str, model) -> bool:
                     else None
                 ),
                 on_wait_start_delay=CHECKING_REPLY_DELAY_SECONDS,
+                on_still_waiting=(
+                    lambda: speak(random.choice(STILL_CHECKING_REPLIES), model=model)
+                    if attempt == 0
+                    else None
+                ),
+                on_still_waiting_delay=STILL_CHECKING_REPLY_DELAY_SECONDS,
             )
 
             reply = result.get("reply", "")

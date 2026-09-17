@@ -225,6 +225,14 @@ CHECKING_REPLIES = [
     "I'll check.",
 ]
 CHECKING_REPLY_DELAY_SECONDS = 1.8
+STILL_CHECKING_REPLIES = [
+    "Still checking.",
+    "Almost there.",
+    "Still looking.",
+    "One more moment.",
+    "Working on it.",
+]
+STILL_CHECKING_REPLY_DELAY_SECONDS = 3.0
 STANDBY_REPLIES = [
     "Standing by.",
     "Back on wake word.",
