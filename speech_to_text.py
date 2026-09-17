@@ -242,11 +242,6 @@ def record_command_audio(seconds: int) -> str:
         return ""
 
     write_wav(COMMAND_RECORDING_PATH, frames)
-    print(
-        f"Stopped recording after {elapsed:.1f}s: {stop_reason}; "
-        f"saved {COMMAND_RECORDING_PATH} (peak rms={peak_rms:.0f}).",
-        flush=True,
-    )
     return COMMAND_RECORDING_PATH
 
 
@@ -254,7 +249,6 @@ def transcribe_with_whisper(audio_path: str) -> str:
     if not audio_path:
         return ""
 
-    print(f"Whisper transcribing {audio_path}...", flush=True)
     start = time.time()
 
     try:

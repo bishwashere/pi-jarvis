@@ -18,8 +18,17 @@ def clean_for_tts(text: str) -> str:
     text = text.strip()
 
     text = re.sub(r"^\[Pasture\]\s*", "", text)
-    text = re.sub(r"[*_`#>\[\]]", "", text)
+    text = re.sub(r"https?://\S+", " link ", text)
+    text = re.sub(r"°\s*[fFcC]\b", " degrees ", text)
+    text = text.replace("°", " degrees ")
+    text = text.replace("%", " percent ")
+    text = text.replace("&", " and ")
+    text = text.replace("@", " at ")
+    text = text.replace("+", " plus ")
+    text = re.sub(r"[/\\|~^*_`#<>{}\[\]();:=]+", " ", text)
+    text = re.sub(r"[\"“”‘’]", "", text)
     text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\s+([,.!?])", r"\1", text)
 
     return text[:MAX_TTS_CHARS]
 

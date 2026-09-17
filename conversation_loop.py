@@ -7,6 +7,7 @@ from vosk import Model
 from call_agent_api import ask_pasture, check_agent_health, start_new_pasture_session
 from config import (
     API_RETRY_COUNT,
+    CHECKING_REPLY_DELAY_SECONDS,
     CHECKING_REPLIES,
     COMMAND_RETRY_COUNT,
     FOLLOWUP_SECONDS,
@@ -134,6 +135,7 @@ def ask_and_speak(user_text: str, model) -> bool:
                     if attempt == 0
                     else None
                 ),
+                on_wait_start_delay=CHECKING_REPLY_DELAY_SECONDS,
             )
 
             reply = result.get("reply", "")

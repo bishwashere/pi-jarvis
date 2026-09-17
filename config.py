@@ -222,6 +222,7 @@ CHECKING_REPLIES = [
     "Let me look.",
     "I'll check.",
 ]
+CHECKING_REPLY_DELAY_SECONDS = 1.8
 STANDBY_REPLIES = [
     "Standing by.",
     "Back on wake word.",

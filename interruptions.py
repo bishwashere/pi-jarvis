@@ -1,5 +1,6 @@
 import concurrent.futures
 import queue
+import time
 
 from detect_wake_word import WakeWordMonitor
 from listen_to_mic import audio_queue, clear_audio_queue, open_microphone_stream
@@ -14,6 +15,7 @@ def wait_for_result_or_wake_word(
     model,
     *args,
     on_wait_start=None,
+    on_wait_start_delay=0,
     **kwargs,
 ):
     monitor = WakeWordMonitor(model)
@@ -21,8 +23,8 @@ def wait_for_result_or_wake_word(
     future = executor.submit(callable_fn, *args, **kwargs)
 
     try:
-        if on_wait_start is not None:
-            on_wait_start()
+        started_at = time.time()
+        wait_started = False
 
         clear_audio_queue()
         with open_microphone_stream():
@@ -31,6 +33,15 @@ def wait_for_result_or_wake_word(
                     return future.result(timeout=0.2)
                 except concurrent.futures.TimeoutError:
                     pass
+
+                if (
+                    on_wait_start is not None
+                    and not wait_started
+                    and time.time() - started_at >= on_wait_start_delay
+                    and not future.done()
+                ):
+                    wait_started = True
+                    on_wait_start()
 
                 try:
                     data = audio_queue.get_nowait()
