@@ -87,7 +87,7 @@ case "${1:-}" in
     ;;
   logs)
     touch "$LOG_FILE"
-    tail -n "${2:-80}" -f "$LOG_FILE"
+    tail -f "$LOG_FILE"
     ;;
   *)
     usage
