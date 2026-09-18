@@ -124,6 +124,38 @@ COMMAND_SILENCE_SECONDS = 2.0
 COMMAND_MIN_RECORD_SECONDS = 0.7
 COMMAND_AUDIO_RMS_THRESHOLD = 420
 WHISPER_TIMEOUT_SECONDS = 180
+QUICK_COMMAND_ENABLED = _env_bool("JARVIS_QUICK_COMMAND_ENABLED", True)
+QUICK_COMMAND_PHRASES = [
+    phrase.strip()
+    for phrase in os.environ.get(
+        "JARVIS_QUICK_COMMAND_PHRASES",
+        ",".join(
+            [
+                "yes",
+                "yeah",
+                "yep",
+                "sure",
+                "ok",
+                "okay",
+                "no",
+                "nope",
+                "stop",
+                "cancel",
+                "nothing",
+                "do nothing",
+                "never mind",
+                "nevermind",
+                "bye",
+                "goodbye",
+                "weather",
+                "weather today",
+                "time",
+                "what time is it",
+            ]
+        ),
+    ).split(",")
+    if phrase.strip()
+]
 
 
 # ---------- Wake word ----------

@@ -16,6 +16,8 @@ from config import (
     COMMAND_SILENCE_SECONDS,
     COMMAND_STT_ENGINE,
     MAX_COMMAND_SECONDS,
+    QUICK_COMMAND_ENABLED,
+    QUICK_COMMAND_PHRASES,
     SAMPLE_RATE,
     WAKE_WORDS,
     WHISPER_CPP_BINARY,
@@ -106,6 +108,13 @@ def normalize_transcript(text: str) -> str:
     cleaned = cleaned.replace("{", " ").replace("}", " ")
     cleaned = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in cleaned)
     return " ".join(cleaned.split())
+
+
+QUICK_COMMANDS = {
+    normalize_transcript(phrase)
+    for phrase in QUICK_COMMAND_PHRASES
+    if normalize_transcript(phrase)
+}
 
 
 def is_non_command_transcript(text: str) -> bool:
@@ -214,7 +223,32 @@ def write_wav(path: str, frames: list[bytes]):
         wav.writeframes(b"".join(frames))
 
 
-def record_command_audio(seconds: int) -> str:
+def build_quick_command_recognizer(model):
+    if not QUICK_COMMAND_ENABLED or model is None or not QUICK_COMMANDS:
+        return None
+
+    grammar = sorted(QUICK_COMMANDS) + ["[unk]"]
+    return KaldiRecognizer(model, SAMPLE_RATE, json.dumps(grammar))
+
+
+def detect_quick_command(recognizer, data: bytes, source: str) -> str:
+    if recognizer is None:
+        return ""
+
+    if recognizer.AcceptWaveform(data):
+        text = json.loads(recognizer.Result()).get("text", "")
+    else:
+        text = json.loads(recognizer.PartialResult()).get("partial", "")
+
+    normalized = normalize_transcript(text)
+    if normalized in QUICK_COMMANDS:
+        voice_event("quick_command_detected", source=source, command=normalized)
+        return normalized
+
+    return ""
+
+
+def record_command_audio(seconds: int, model=None) -> tuple[str, str]:
     clear_audio_queue()
 
     start = time.time()
@@ -223,6 +257,7 @@ def record_command_audio(seconds: int) -> str:
     frames = []
     peak_rms = 0.0
     stop_reason = "recording window expired"
+    quick_recognizer = build_quick_command_recognizer(model)
 
     voice_event("audio_recording_started", seconds=seconds)
     print(f"Recording command audio for up to {seconds} seconds...")
@@ -235,6 +270,21 @@ def record_command_audio(seconds: int) -> str:
                 continue
 
             frames.append(data)
+            quick_command = detect_quick_command(
+                quick_recognizer,
+                data,
+                source="recording",
+            )
+            if quick_command:
+                elapsed = time.time() - start
+                voice_event(
+                    "audio_recording_finished",
+                    reason="quick_command",
+                    elapsed_seconds=f"{elapsed:.1f}",
+                    peak_rms=f"{peak_rms:.0f}",
+                )
+                return quick_command, ""
+
             rms = calculate_rms(data)
             peak_rms = max(peak_rms, rms)
 
@@ -279,7 +329,7 @@ def record_command_audio(seconds: int) -> str:
             f"no speech heard (peak rms={peak_rms:.0f}).",
             flush=True,
         )
-        return ""
+        return "", ""
 
     voice_event(
         "audio_recording_finished",
@@ -288,7 +338,7 @@ def record_command_audio(seconds: int) -> str:
         peak_rms=f"{peak_rms:.0f}",
     )
     write_wav(COMMAND_RECORDING_PATH, frames)
-    return COMMAND_RECORDING_PATH
+    return "", COMMAND_RECORDING_PATH
 
 
 def transcribe_with_whisper(audio_path: str) -> str:
@@ -344,14 +394,17 @@ def transcribe_with_whisper(audio_path: str) -> str:
     return clean_command_transcript(transcript)
 
 
-def listen_for_command_with_whisper(seconds: int) -> str:
+def listen_for_command_with_whisper(model, seconds: int) -> str:
     voice_event("command_listen_started", engine="whisper", seconds=seconds)
     print(f"Listening for command with Whisper for up to {seconds} seconds...")
     deadline = time.time() + seconds
 
     while time.time() < deadline:
         remaining = max(1, int(deadline - time.time()))
-        audio_path = record_command_audio(remaining)
+        quick_command, audio_path = record_command_audio(remaining, model=model)
+        if quick_command:
+            return quick_command
+
         if not audio_path:
             return ""
 
@@ -371,7 +424,7 @@ def listen_for_command_with_whisper(seconds: int) -> str:
 
 def listen_for_command(model, seconds: int = MAX_COMMAND_SECONDS, allow_wake_interrupt: bool = True) -> str:
     if COMMAND_STT_ENGINE.lower() == "whisper":
-        return listen_for_command_with_whisper(seconds)
+        return listen_for_command_with_whisper(model, seconds)
 
     recognizer = KaldiRecognizer(model, SAMPLE_RATE)
 

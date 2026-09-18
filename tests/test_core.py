@@ -12,6 +12,7 @@ from call_agent_api import parse_agent_reply
 from daily_context import contextualize_affirmative_command, parse_suggestions
 from detect_wake_word import get_wake_match
 from speech_to_text import (
+    QUICK_COMMANDS,
     WAKE_ONLY_COMMAND,
     calculate_rms,
     clean_command_transcript,
@@ -40,6 +41,8 @@ def test_wake_word_and_text_cleanup():
     assert clean_command_transcript("Hi.") == WAKE_ONLY_COMMAND
     assert clean_command_transcript("hello computer?") == WAKE_ONLY_COMMAND
     assert clean_command_transcript("Jarvis, what time is it?") == "what time is it"
+    assert "yes" in QUICK_COMMANDS
+    assert "do nothing" in QUICK_COMMANDS
     assert clean_for_tts("[Pasture] **Hello**   there") == "Hello there"
     assert calculate_rms(b"\x00\x00" * 20) == 0
 
