@@ -268,12 +268,12 @@ curl -X POST http://127.0.0.1:8765/command \
   -d '{"command":"speak","text":"Welcome home."}'
 ```
 
-Trigger the built-in welcome-home action with cooldown:
+Or send just an instruction/message to speak:
 
 ```bash
 curl -X POST http://127.0.0.1:8765/command \
   -H 'Content-Type: application/json' \
-  -d '{"command":"welcome_home"}'
+  -d '{"instruction":"Welcome home."}'
 ```
 
 To let Home Assistant call it over the LAN, set `JARVIS_COMMAND_SERVER_HOST=0.0.0.0`

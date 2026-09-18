@@ -22,8 +22,6 @@ from config import (
     VOSK_MODEL_PATH,
     WAKE_REPLIES,
     WAKE_WORDS,
-    WELCOME_HOME_COOLDOWN_SECONDS,
-    WELCOME_HOME_REPLIES,
 )
 from daily_context import (
     choose_wake_reply,
@@ -71,7 +69,6 @@ END_SESSION_PHRASES = {
 
 
 _speak_lock = threading.Lock()
-_last_welcome_home_at = 0.0
 
 
 def normalize_command(text: str) -> str:
@@ -240,42 +237,24 @@ def prepare_command_for_api(command: str, wake_context_prompt: str | None, kind:
 
 
 def handle_local_command(payload: dict) -> dict:
-    global _last_welcome_home_at
-
     raw_command = str(payload.get("command") or payload.get("action") or "")
     command = normalize_command(raw_command.replace("_", " "))
-    voice_event("command_server_received", command=command)
+    text = str(
+        payload.get("text")
+        or payload.get("instruction")
+        or payload.get("message")
+        or ""
+    ).strip()
+    voice_event("command_server_received", command=command, text=text)
 
     if command == "status":
         return {"ok": True, "status": "running"}
 
-    if command == "speak":
-        text = str(payload.get("text") or "").strip()
+    if command in {"", "speak", "say"}:
         if not text:
-            return {"ok": False, "error": "text is required"}
+            return {"ok": False, "error": "text, instruction, or message is required"}
 
         speak(text, kind="command_server")
-        return {"ok": True, "spoken": True}
-
-    if command == "welcome home":
-        now = time.time()
-        elapsed = now - _last_welcome_home_at
-        if elapsed < WELCOME_HOME_COOLDOWN_SECONDS:
-            voice_event(
-                "welcome_home_skipped",
-                reason="cooldown",
-                remaining_seconds=f"{WELCOME_HOME_COOLDOWN_SECONDS - elapsed:.0f}",
-            )
-            return {
-                "ok": True,
-                "spoken": False,
-                "reason": "cooldown",
-                "remaining_seconds": max(0, int(WELCOME_HOME_COOLDOWN_SECONDS - elapsed)),
-            }
-
-        text = str(payload.get("text") or "").strip() or random.choice(WELCOME_HOME_REPLIES)
-        _last_welcome_home_at = now
-        speak(text, kind="welcome_home")
         return {"ok": True, "spoken": True, "text": text}
 
     return {"ok": False, "error": f"unknown command: {command}"}

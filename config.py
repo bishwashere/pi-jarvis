@@ -241,15 +241,6 @@ COMMAND_SERVER_ENABLED = _env_bool("JARVIS_COMMAND_SERVER_ENABLED", True)
 COMMAND_SERVER_HOST = os.environ.get("JARVIS_COMMAND_SERVER_HOST", "127.0.0.1")
 COMMAND_SERVER_PORT = int(os.environ.get("JARVIS_COMMAND_SERVER_PORT", "8765"))
 COMMAND_SERVER_TOKEN = os.environ.get("JARVIS_COMMAND_SERVER_TOKEN", "").strip()
-WELCOME_HOME_COOLDOWN_SECONDS = float(
-    os.environ.get("JARVIS_WELCOME_HOME_COOLDOWN_SECONDS", "900")
-)
-WELCOME_HOME_REPLIES = [
-    "Welcome home.",
-    "Hey, welcome back.",
-    "Good to have you home.",
-    "You're home. Welcome back.",
-]
 
 
 # ---------- Voice / TTS ----------
