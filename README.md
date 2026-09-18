@@ -260,7 +260,7 @@ By default it listens on `127.0.0.1:8765` only:
 curl http://127.0.0.1:8765/health
 ```
 
-Speak a phrase:
+Queue a phrase into the normal Jarvis voice loop:
 
 ```bash
 curl -X POST http://127.0.0.1:8765/command \
@@ -275,6 +275,12 @@ curl -X POST http://127.0.0.1:8765/command \
   -H 'Content-Type: application/json' \
   -d '{"instruction":"Welcome home."}'
 ```
+
+Jarvis speaks the queued text with the same playback and voice-event logging as
+normal replies, then opens the regular follow-up listen window. If the user
+answers, that command goes through the usual command capture, Pasture API, reply,
+and follow-up loop. If the user stays silent, Jarvis naturally returns to wake
+listening.
 
 To let Home Assistant call it over the LAN, set `JARVIS_COMMAND_SERVER_HOST=0.0.0.0`
 and set `JARVIS_COMMAND_SERVER_TOKEN`. Jarvis refuses to bind outside localhost

@@ -1,4 +1,5 @@
 import random
+import queue
 import threading
 import time
 
@@ -69,6 +70,7 @@ END_SESSION_PHRASES = {
 
 
 _speak_lock = threading.Lock()
+_local_command_queue = queue.Queue()
 
 
 def normalize_command(text: str) -> str:
@@ -254,24 +256,14 @@ def handle_local_command(payload: dict) -> dict:
         if not text:
             return {"ok": False, "error": "text, instruction, or message is required"}
 
-        speak(text, kind="command_server")
-        return {"ok": True, "spoken": True, "text": text}
+        _local_command_queue.put({"text": text})
+        voice_event("command_server_queued", text=text)
+        return {"ok": True, "queued": True, "text": text}
 
     return {"ok": False, "error": f"unknown command: {command}"}
 
 
-def handle_conversation(model):
-    clear_audio_queue()
-    wake_context_prompt = speak_wake_reply(model=model)
-    served_turn = False
-
-    command = get_command_with_retries(model)
-
-    if not command:
-        voice_event("command_listen_finished", result="no_initial_command")
-        print("No command heard after wake. Returning to wake word mode.", flush=True)
-        return
-
+def process_command_loop(model, command: str, served_turn: bool = False, wake_context_prompt: str | None = None):
     while command:
         if is_wake_only_command(command):
             voice_event("wake_only_command", kind="initial")
@@ -383,6 +375,62 @@ def handle_conversation(model):
             command = ""
 
 
+def handle_conversation(model):
+    clear_audio_queue()
+    wake_context_prompt = speak_wake_reply(model=model)
+
+    command = get_command_with_retries(model)
+
+    if not command:
+        voice_event("command_listen_finished", result="no_initial_command")
+        print("No command heard after wake. Returning to wake word mode.", flush=True)
+        return
+
+    process_command_loop(
+        model,
+        command,
+        served_turn=False,
+        wake_context_prompt=wake_context_prompt,
+    )
+
+
+def get_pending_local_command():
+    try:
+        return _local_command_queue.get_nowait()
+    except queue.Empty:
+        return None
+
+
+def handle_command_server_instruction(model, payload: dict):
+    text = str(payload.get("text") or "").strip()
+    if not text:
+        return
+
+    clear_audio_queue()
+    voice_event("command_server_instruction_started", text=text)
+    speak(text, model=model, kind="command_server")
+
+    listen_started_at = time.time()
+    try:
+        command = get_followup_until(model, FOLLOWUP_SECONDS)
+    except WakeWordInterrupted:
+        print("Wake phrase interrupted command-server follow-up; listening for command.", flush=True)
+        command = get_command_with_retries(model)
+
+    if not command:
+        elapsed = time.time() - listen_started_at
+        voice_event(
+            "followup_listen_finished",
+            result="no_followup_after_command_server",
+            elapsed_seconds=f"{elapsed:.1f}",
+            seconds=FOLLOWUP_SECONDS,
+        )
+        confirm_standby_if_served(True, model)
+        return
+
+    process_command_loop(model, command, served_turn=True, wake_context_prompt=None)
+
+
 def run_assistant():
     print("Loading Vosk model...")
     model = Model(VOSK_MODEL_PATH)
@@ -410,15 +458,33 @@ def run_assistant():
             print("Jarvis command server failed:", e, flush=True)
 
     while True:
+        pending_command = get_pending_local_command()
+        if pending_command:
+            handle_command_server_instruction(model, pending_command)
+            clear_audio_queue()
+            wake_monitor.reset()
+            continue
+
         voice_event("wake_listen_started")
         print("Waiting for wake word...", flush=True)
+        pending_command = None
+        wake_heard = False
         try:
             with open_microphone_stream():
                 while True:
-                    data = audio_queue.get()
+                    pending_command = get_pending_local_command()
+                    if pending_command:
+                        clear_audio_queue()
+                        break
+
+                    try:
+                        data = audio_queue.get(timeout=0.2)
+                    except queue.Empty:
+                        continue
 
                     if wake_monitor.accept_audio(data):
                         clear_audio_queue()
+                        wake_heard = True
                         break
         except Exception as e:
             print(f"Microphone stream failed: {e}. Retrying in 5 seconds.", flush=True)
@@ -426,6 +492,10 @@ def run_assistant():
             time.sleep(5)
             continue
 
-        handle_conversation(model)
+        if pending_command:
+            handle_command_server_instruction(model, pending_command)
+        elif wake_heard:
+            handle_conversation(model)
+
         clear_audio_queue()
         wake_monitor.reset()

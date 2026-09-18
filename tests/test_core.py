@@ -289,7 +289,7 @@ def test_windows_launcher_uses_native_venv_and_portable_audio():
 
 def test_conversation_happy_path_without_hardware(monkeypatch):
     calls = []
-    monkeypatch.setattr(conversation_loop, "speak", lambda text: None)
+    monkeypatch.setattr(conversation_loop, "speak", lambda text, **kwargs: None)
     monkeypatch.setattr(
         conversation_loop,
         "get_command_with_retries",
@@ -309,3 +309,44 @@ def test_conversation_happy_path_without_hardware(monkeypatch):
     conversation_loop.handle_conversation(object())
 
     assert calls == ["what time is it"]
+
+
+def test_local_command_is_queued_for_voice_loop():
+    while conversation_loop.get_pending_local_command():
+        pass
+
+    result = conversation_loop.handle_local_command({"instruction": "Welcome home."})
+
+    assert result == {"ok": True, "queued": True, "text": "Welcome home."}
+    assert conversation_loop.get_pending_local_command() == {"text": "Welcome home."}
+
+
+def test_command_server_instruction_uses_conversation_followup(monkeypatch):
+    events = []
+
+    monkeypatch.setattr(conversation_loop, "clear_audio_queue", lambda: events.append(("clear",)))
+    monkeypatch.setattr(
+        conversation_loop,
+        "speak",
+        lambda text, model=None, kind="speech": events.append(("speak", text, kind)),
+    )
+    monkeypatch.setattr(
+        conversation_loop,
+        "get_followup_until",
+        lambda model, seconds: "turn on the bedroom light",
+    )
+    monkeypatch.setattr(
+        conversation_loop,
+        "process_command_loop",
+        lambda model, command, served_turn=False, wake_context_prompt=None: events.append(
+            ("process", command, served_turn, wake_context_prompt)
+        ),
+    )
+
+    conversation_loop.handle_command_server_instruction(object(), {"text": "Welcome home."})
+
+    assert events == [
+        ("clear",),
+        ("speak", "Welcome home.", "command_server"),
+        ("process", "turn on the bedroom light", True, None),
+    ]
