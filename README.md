@@ -251,7 +251,37 @@ require a separate `whisper.cpp` build for local testing.
 
 Jarvis validates that the chosen microphone supports the configured `SAMPLE_RATE` before opening it. If the USB microphone or speaker appears under a different card/device number, update `AUDIO_DEVICE`, `AUDIO_DEVICE_FALLBACKS`, `PLAYBACK_DEVICE`, `VOLUME_CARD`, and `VOLUME_CONTROL`.
 
-## 7. Log Examples
+## 7. Local Command Endpoint
+
+Jarvis can accept local commands from Home Assistant or another trusted client.
+By default it listens on `127.0.0.1:8765` only:
+
+```bash
+curl http://127.0.0.1:8765/health
+```
+
+Speak a phrase:
+
+```bash
+curl -X POST http://127.0.0.1:8765/command \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"speak","text":"Welcome home."}'
+```
+
+Trigger the built-in welcome-home action with cooldown:
+
+```bash
+curl -X POST http://127.0.0.1:8765/command \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"welcome_home"}'
+```
+
+To let Home Assistant call it over the LAN, set `JARVIS_COMMAND_SERVER_HOST=0.0.0.0`
+and set `JARVIS_COMMAND_SERVER_TOKEN`. Jarvis refuses to bind outside localhost
+without a token. Send the token as either `Authorization: Bearer <token>` or
+`X-Jarvis-Token: <token>`.
+
+## 8. Log Examples
 
 Expected startup output includes:
 
@@ -288,11 +318,12 @@ Whisper transcript after 3.3s: 'what is the weather today'
 Command: what is the weather today
 ```
 
-## 8. Project Layout
+## 9. Project Layout
 
 - `jarvis_voice.py` - main entry point.
 - `config.py` - audio devices, wake words, API URL, model paths, timing, and spoken phrases.
 - `conversation_loop.py` - wake/listen/ask/speak loop.
+- `jarvis_command_server.py` - local HTTP command endpoint for Home Assistant.
 - `listen_to_mic.py` - microphone stream using `sounddevice`.
 - `speech_to_text.py` and `detect_wake_word.py` - Vosk speech recognition and wake-word detection.
 - `call_agent_api.py` - HTTP calls to the Jarvis/Pasture agent API.
@@ -304,7 +335,7 @@ Command: what is the weather today
 - `tests/` - hardware- and network-independent automated tests.
 - `runtime/assets/` - local Vosk and Piper model assets copied from the Pi.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 - If startup fails with a Vosk model error, confirm `runtime/assets/vosk-model-small-en-us-0.15/` exists and matches `VOSK_MODEL_PATH`.
 - If command transcription fails with Whisper errors, confirm the sibling `whisper.cpp/build/bin/whisper-cli` and `whisper.cpp/models/ggml-tiny.en.bin` paths exist, set the corresponding environment overrides, or use the platform's local launcher for Vosk transcription.

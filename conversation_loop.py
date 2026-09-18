@@ -1,4 +1,5 @@
 import random
+import threading
 import time
 
 import requests
@@ -9,6 +10,7 @@ from config import (
     API_RETRY_COUNT,
     CHECKING_REPLY_DELAY_SECONDS,
     CHECKING_REPLIES,
+    COMMAND_SERVER_ENABLED,
     COMMAND_RETRY_COUNT,
     FOLLOWUP_SECONDS,
     GENERIC_ERROR_REPLY,
@@ -20,6 +22,8 @@ from config import (
     VOSK_MODEL_PATH,
     WAKE_REPLIES,
     WAKE_WORDS,
+    WELCOME_HOME_COOLDOWN_SECONDS,
+    WELCOME_HOME_REPLIES,
 )
 from daily_context import (
     choose_wake_reply,
@@ -29,6 +33,7 @@ from daily_context import (
 )
 from detect_wake_word import WakeWordMonitor
 from interruptions import WakeWordInterrupted, wait_for_result_or_wake_word
+from jarvis_command_server import start_command_server
 from listen_to_mic import (
     audio_queue,
     clear_audio_queue,
@@ -65,6 +70,10 @@ END_SESSION_PHRASES = {
 }
 
 
+_speak_lock = threading.Lock()
+_last_welcome_home_at = 0.0
+
+
 def normalize_command(text: str) -> str:
     cleaned = text.lower().strip()
     cleaned = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in cleaned)
@@ -86,8 +95,9 @@ def end_pasture_session_quietly():
 
 def speak(text: str, model=None, kind: str = "speech"):
     voice_event("spoken", kind=kind, text=text)
-    path = synthesize_to_wav(text)
-    play_wav_file(path)
+    with _speak_lock:
+        path = synthesize_to_wav(text)
+        play_wav_file(path)
 
 
 def speak_wake_reply(model=None) -> str | None:
@@ -227,6 +237,48 @@ def prepare_command_for_api(command: str, wake_context_prompt: str | None, kind:
     voice_event("command_prepared", kind=kind, text=api_text)
     record_utterance(api_text, kind=kind)
     return api_text
+
+
+def handle_local_command(payload: dict) -> dict:
+    global _last_welcome_home_at
+
+    raw_command = str(payload.get("command") or payload.get("action") or "")
+    command = normalize_command(raw_command.replace("_", " "))
+    voice_event("command_server_received", command=command)
+
+    if command == "status":
+        return {"ok": True, "status": "running"}
+
+    if command == "speak":
+        text = str(payload.get("text") or "").strip()
+        if not text:
+            return {"ok": False, "error": "text is required"}
+
+        speak(text, kind="command_server")
+        return {"ok": True, "spoken": True}
+
+    if command == "welcome home":
+        now = time.time()
+        elapsed = now - _last_welcome_home_at
+        if elapsed < WELCOME_HOME_COOLDOWN_SECONDS:
+            voice_event(
+                "welcome_home_skipped",
+                reason="cooldown",
+                remaining_seconds=f"{WELCOME_HOME_COOLDOWN_SECONDS - elapsed:.0f}",
+            )
+            return {
+                "ok": True,
+                "spoken": False,
+                "reason": "cooldown",
+                "remaining_seconds": max(0, int(WELCOME_HOME_COOLDOWN_SECONDS - elapsed)),
+            }
+
+        text = str(payload.get("text") or "").strip() or random.choice(WELCOME_HOME_REPLIES)
+        _last_welcome_home_at = now
+        speak(text, kind="welcome_home")
+        return {"ok": True, "spoken": True, "text": text}
+
+    return {"ok": False, "error": f"unknown command: {command}"}
 
 
 def handle_conversation(model):
@@ -370,6 +422,13 @@ def run_assistant():
     except Exception as e:
         voice_event("health_check_failed", error=e)
         print("Jarvis agent health check failed:", e)
+
+    if COMMAND_SERVER_ENABLED:
+        try:
+            start_command_server(handle_local_command)
+        except Exception as e:
+            voice_event("command_server_failed", error=e)
+            print("Jarvis command server failed:", e, flush=True)
 
     while True:
         voice_event("wake_listen_started")
