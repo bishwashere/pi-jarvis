@@ -25,6 +25,7 @@ from config import (
 )
 from detect_wake_word import has_strict_wake_word
 from listen_to_mic import audio_queue, clear_audio_queue, open_microphone_stream
+from voice_log import voice_event
 
 
 WAKE_ONLY_COMMAND = "__jarvis_wake_only__"
@@ -124,14 +125,17 @@ def is_non_command_transcript(text: str) -> bool:
 
 def clean_command_transcript(text: str) -> str:
     if is_non_command_transcript(text):
+        voice_event("transcript_ignored", reason="non_command", text=text)
         print(f"Ignoring non-command transcript: {text!r}", flush=True)
         return ""
 
     normalized = normalize_transcript(text)
     command = remove_wake_words(normalized)
     if has_strict_wake_word(normalized) and not command:
+        voice_event("transcript_wake_only", text=text)
         return WAKE_ONLY_COMMAND
 
+    voice_event("transcript_accepted", command=command)
     return command
 
 
@@ -220,6 +224,7 @@ def record_command_audio(seconds: int) -> str:
     peak_rms = 0.0
     stop_reason = "recording window expired"
 
+    voice_event("audio_recording_started", seconds=seconds)
     print(f"Recording command audio for up to {seconds} seconds...")
 
     with open_microphone_stream():
@@ -235,6 +240,12 @@ def record_command_audio(seconds: int) -> str:
 
             if rms >= COMMAND_AUDIO_RMS_THRESHOLD:
                 if not speech_started:
+                    voice_event(
+                        "audio_speech_started",
+                        after_seconds=f"{time.time() - start:.1f}",
+                        rms=f"{rms:.0f}",
+                        threshold=COMMAND_AUDIO_RMS_THRESHOLD,
+                    )
                     print(
                         f"Whisper command recording detected speech "
                         f"after {time.time() - start:.1f}s "
@@ -257,6 +268,12 @@ def record_command_audio(seconds: int) -> str:
 
     elapsed = time.time() - start
     if not speech_started:
+        voice_event(
+            "audio_recording_finished",
+            reason="no_speech",
+            elapsed_seconds=f"{elapsed:.1f}",
+            peak_rms=f"{peak_rms:.0f}",
+        )
         print(
             f"Stopped recording after {elapsed:.1f}s: "
             f"no speech heard (peak rms={peak_rms:.0f}).",
@@ -264,6 +281,12 @@ def record_command_audio(seconds: int) -> str:
         )
         return ""
 
+    voice_event(
+        "audio_recording_finished",
+        reason=stop_reason,
+        elapsed_seconds=f"{elapsed:.1f}",
+        peak_rms=f"{peak_rms:.0f}",
+    )
     write_wav(COMMAND_RECORDING_PATH, frames)
     return COMMAND_RECORDING_PATH
 
@@ -312,11 +335,17 @@ def transcribe_with_whisper(audio_path: str) -> str:
         return ""
 
     transcript = " ".join(result.stdout.split()).strip()
+    voice_event(
+        "whisper_transcript",
+        elapsed_seconds=f"{elapsed:.1f}",
+        text=transcript,
+    )
     print(f"Whisper transcript after {elapsed:.1f}s: {transcript!r}", flush=True)
     return clean_command_transcript(transcript)
 
 
 def listen_for_command_with_whisper(seconds: int) -> str:
+    voice_event("command_listen_started", engine="whisper", seconds=seconds)
     print(f"Listening for command with Whisper for up to {seconds} seconds...")
     deadline = time.time() + seconds
 
@@ -331,6 +360,7 @@ def listen_for_command_with_whisper(seconds: int) -> str:
             return command
 
         if time.time() < deadline:
+            voice_event("command_listen_continued", reason="ignored_or_empty_transcript")
             print(
                 "No command in captured audio; still listening.",
                 flush=True,

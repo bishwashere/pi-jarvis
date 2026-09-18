@@ -38,6 +38,7 @@ from listen_to_mic import (
 from play_audio import play_command_captured_tone, play_online_tone, play_wav_file
 from speech_to_text import WAKE_ONLY_COMMAND, listen_for_command
 from text_to_speech import synthesize_to_wav
+from voice_log import voice_event
 
 
 END_SESSION_PHRASES = {
@@ -83,24 +84,27 @@ def end_pasture_session_quietly():
         print("Could not reset Pasture session; returning to wake word mode.", flush=True)
 
 
-def speak(text: str, model=None):
+def speak(text: str, model=None, kind: str = "speech"):
+    voice_event("spoken", kind=kind, text=text)
     path = synthesize_to_wav(text)
     play_wav_file(path)
 
 
 def speak_wake_reply(model=None) -> str | None:
     reply, source = choose_wake_reply(WAKE_REPLIES)
-    speak(reply, model=model)
+    voice_event("wake_reply_selected", source=source, text=reply)
+    speak(reply, model=model, kind="wake_reply")
     return reply if source == "daily-context" else None
 
 
 def confirm_standby_if_served(served_turn: bool, model):
     if served_turn:
-        speak(random.choice(STANDBY_REPLIES), model=model)
+        speak(random.choice(STANDBY_REPLIES), model=model, kind="standby")
 
 
 def confirm_command_captured():
     try:
+        voice_event("command_captured_tone")
         play_command_captured_tone()
     except Exception as e:
         print("Command captured tone failed:", e, flush=True)
@@ -108,6 +112,12 @@ def confirm_command_captured():
 
 def get_command_with_retries(model) -> str:
     for attempt in range(COMMAND_RETRY_COUNT):
+        voice_event(
+            "command_listen_attempt",
+            kind="initial",
+            attempt=attempt + 1,
+            seconds=MAX_COMMAND_SECONDS,
+        )
         try:
             command = listen_for_command(model, seconds=MAX_COMMAND_SECONDS)
         except WakeWordInterrupted:
@@ -131,6 +141,7 @@ def get_followup_until(model, seconds: int) -> str:
 
     while time.time() < deadline:
         remaining = max(1, int(deadline - time.time()))
+        voice_event("command_listen_attempt", kind="followup", seconds=remaining)
         try:
             followup = listen_for_command(model, seconds=remaining)
         except WakeWordInterrupted:
@@ -151,18 +162,24 @@ def get_followup_until(model, seconds: int) -> str:
 def ask_and_speak(user_text: str, model) -> bool:
     for attempt in range(API_RETRY_COUNT):
         try:
+            started_at = time.time()
+            voice_event(
+                "pasture_request_started",
+                attempt=attempt + 1,
+                text=user_text,
+            )
             result = wait_for_result_or_wake_word(
                 ask_pasture,
                 model,
                 user_text,
                 on_wait_start=(
-                    lambda: speak(random.choice(CHECKING_REPLIES), model=model)
+                    lambda: speak(random.choice(CHECKING_REPLIES), model=model, kind="checking")
                     if attempt == 0
                     else None
                 ),
                 on_wait_start_delay=CHECKING_REPLY_DELAY_SECONDS,
                 on_still_waiting=(
-                    lambda: speak(random.choice(STILL_CHECKING_REPLIES), model=model)
+                    lambda: speak(random.choice(STILL_CHECKING_REPLIES), model=model, kind="still_checking")
                     if attempt == 0
                     else None
                 ),
@@ -171,8 +188,14 @@ def ask_and_speak(user_text: str, model) -> bool:
 
             reply = result.get("reply", "")
             continue_listening = bool(result.get("continue_listening", False))
+            voice_event(
+                "pasture_response_received",
+                elapsed_seconds=f"{time.time() - started_at:.1f}",
+                continue_listening=continue_listening,
+                reply_chars=len(reply),
+            )
 
-            speak(reply, model=model)
+            speak(reply, model=model, kind="answer")
             return continue_listening
 
         except WakeWordInterrupted:
@@ -180,6 +203,7 @@ def ask_and_speak(user_text: str, model) -> bool:
             raise
 
         except requests.exceptions.RequestException as e:
+            voice_event("pasture_request_failed", attempt=attempt + 1, error=e)
             print("API error:", e)
 
             if attempt < API_RETRY_COUNT - 1:
@@ -190,8 +214,9 @@ def ask_and_speak(user_text: str, model) -> bool:
             return None
 
         except Exception as e:
+            voice_event("unexpected_error", error=e)
             print("Unexpected error:", e)
-            speak(GENERIC_ERROR_REPLY, model=model)
+            speak(GENERIC_ERROR_REPLY, model=model, kind="error")
             return True
 
     return True
@@ -199,6 +224,7 @@ def ask_and_speak(user_text: str, model) -> bool:
 
 def prepare_command_for_api(command: str, wake_context_prompt: str | None, kind: str) -> str:
     api_text = contextualize_affirmative_command(command, wake_context_prompt)
+    voice_event("command_prepared", kind=kind, text=api_text)
     record_utterance(api_text, kind=kind)
     return api_text
 
@@ -211,26 +237,31 @@ def handle_conversation(model):
     command = get_command_with_retries(model)
 
     if not command:
+        voice_event("command_listen_finished", result="no_initial_command")
         print("No command heard after wake. Returning to wake word mode.", flush=True)
         return
 
     while command:
         if is_wake_only_command(command):
+            voice_event("wake_only_command", kind="initial")
             print("Wake-only command heard; repeating wake prompt.", flush=True)
             wake_context_prompt = speak_wake_reply(model=model)
             command = get_command_with_retries(model)
             if not command:
+                voice_event("command_listen_finished", result="no_command_after_wake_only")
                 print("No command heard after wake. Returning to wake word mode.", flush=True)
                 return
             continue
 
         if is_end_session_command(command):
+            voice_event("session_end_command", kind="initial", text=command)
             print("End-session command heard. Returning to wake word mode.", flush=True)
             end_pasture_session_quietly()
             confirm_standby_if_served(served_turn, model)
             return
 
         confirm_command_captured()
+        voice_event("command_accepted", kind="initial", text=command)
         print("Command:", command)
         command_for_api = prepare_command_for_api(
             command,
@@ -267,6 +298,12 @@ def handle_conversation(model):
 
             if not followup:
                 elapsed = time.time() - listen_started_at
+                voice_event(
+                    "followup_listen_finished",
+                    result="no_followup",
+                    elapsed_seconds=f"{elapsed:.1f}",
+                    seconds=listen_seconds,
+                )
                 print(
                     f"No follow-up after {elapsed:.1f}s "
                     f"(listen window: {listen_seconds}s). "
@@ -277,6 +314,7 @@ def handle_conversation(model):
                 break
 
             if is_end_session_command(followup):
+                voice_event("session_end_command", kind="followup", text=followup)
                 print("End-session follow-up heard. Returning to wake word mode.", flush=True)
                 end_pasture_session_quietly()
                 confirm_standby_if_served(served_turn, model)
@@ -284,12 +322,14 @@ def handle_conversation(model):
                 return
 
             if is_wake_only_command(followup):
+                voice_event("wake_only_command", kind="followup")
                 print("Wake-only follow-up heard; repeating wake prompt.", flush=True)
                 wake_context_prompt = speak_wake_reply(model=model)
                 command = get_command_with_retries(model)
                 break
 
             confirm_command_captured()
+            voice_event("command_accepted", kind="followup", text=followup)
             print("Follow-up:", followup)
             followup_for_api = prepare_command_for_api(
                 followup,
@@ -324,12 +364,15 @@ def run_assistant():
 
     try:
         check_agent_health()
+        voice_event("health_check_passed")
         print("Jarvis agent health check passed; playing online tone.")
         play_online_tone()
     except Exception as e:
+        voice_event("health_check_failed", error=e)
         print("Jarvis agent health check failed:", e)
 
     while True:
+        voice_event("wake_listen_started")
         print("Waiting for wake word...", flush=True)
         try:
             with open_microphone_stream():

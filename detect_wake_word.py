@@ -10,6 +10,7 @@ from config import (
     SAMPLE_RATE,
     WAKE_WORDS,
 )
+from voice_log import voice_event
 
 def normalize_text(text: str) -> str:
     return " ".join(text.lower().strip().split())
@@ -137,6 +138,13 @@ class WakeWordMonitor:
         self.last_partial = ""
 
     def log_wake_match(self, match: dict, source: str):
+        voice_event(
+            "wake_heard",
+            source=source,
+            mode=match.get("mode"),
+            heard=match.get("heard"),
+            matched=match.get("matched"),
+        )
         if match.get("mode") == "strict":
             print(
                 "Wake match: "
