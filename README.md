@@ -287,7 +287,58 @@ and set `JARVIS_COMMAND_SERVER_TOKEN`. Jarvis refuses to bind outside localhost
 without a token. Send the token as either `Authorization: Bearer <token>` or
 `X-Jarvis-Token: <token>`.
 
-## 8. Log Examples
+## 8. Scripted Conversation Simulation
+
+To test the wake-to-reply conversation path without the microphone, speaker, or
+local command endpoint, run the scripted simulator:
+
+```bash
+runtime/venv/bin/python simulate_conversation.py \
+  "hey jarvis" \
+  "what time is it"
+```
+
+Reusable suites live in `simulation_suites/`:
+
+```bash
+runtime/venv/bin/python simulate_conversation.py \
+  --suite simulation_suites/basic_wake_turn.json
+```
+
+The weather follow-up suite is:
+
+```bash
+runtime/venv/bin/python simulate_conversation.py \
+  --suite simulation_suites/weather_followup.json
+```
+
+By default this uses a fake API reply and muted playback, but it still runs
+through wake matching, wake reply selection, command cleanup, normal command
+handling, reply handling, follow-up timeout behavior, and voice-event logs. Add
+timing flags to mimic the time between wake and command:
+
+```bash
+runtime/venv/bin/python simulate_conversation.py \
+  --command-delay 2 \
+  --fake-api-latency 1.5 \
+  "hey jarvis" \
+  "what time is it"
+```
+
+To call the configured Jarvis/Pasture API while keeping microphone and speaker
+out of the loop:
+
+```bash
+runtime/venv/bin/python simulate_conversation.py --real-api \
+  "hey jarvis" \
+  "what time is it"
+```
+
+Use `--summary-json` when you want machine-readable timing output.
+Use `--audio-mode synthesize` to run Piper/TTS conversion while still skipping
+speaker playback.
+
+## 9. Log Examples
 
 Expected startup output includes:
 
@@ -324,7 +375,7 @@ Whisper transcript after 3.3s: 'what is the weather today'
 Command: what is the weather today
 ```
 
-## 9. Project Layout
+## 10. Project Layout
 
 - `jarvis_voice.py` - main entry point.
 - `config.py` - audio devices, wake words, API URL, model paths, timing, and spoken phrases.
@@ -341,7 +392,7 @@ Command: what is the weather today
 - `tests/` - hardware- and network-independent automated tests.
 - `runtime/assets/` - local Vosk and Piper model assets copied from the Pi.
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 - If startup fails with a Vosk model error, confirm `runtime/assets/vosk-model-small-en-us-0.15/` exists and matches `VOSK_MODEL_PATH`.
 - If command transcription fails with Whisper errors, confirm the sibling `whisper.cpp/build/bin/whisper-cli` and `whisper.cpp/models/ggml-tiny.en.bin` paths exist, set the corresponding environment overrides, or use the platform's local launcher for Vosk transcription.

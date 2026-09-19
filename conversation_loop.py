@@ -4,7 +4,6 @@ import threading
 import time
 
 import requests
-from vosk import Model
 
 from call_agent_api import ask_pasture, check_agent_health, start_new_pasture_session
 from config import (
@@ -432,6 +431,8 @@ def handle_command_server_instruction(model, payload: dict):
 
 
 def run_assistant():
+    from vosk import Model
+
     print("Loading Vosk model...")
     model = Model(VOSK_MODEL_PATH)
     wake_monitor = WakeWordMonitor(model)

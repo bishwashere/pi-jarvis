@@ -8,6 +8,7 @@ import conversation_loop
 import listen_to_mic
 import play_audio
 import text_to_speech
+import simulate_conversation
 from call_agent_api import parse_agent_reply
 from daily_context import contextualize_affirmative_command, parse_suggestions
 from detect_wake_word import get_wake_match
@@ -45,6 +46,23 @@ def test_wake_word_and_text_cleanup():
     assert "do nothing" in QUICK_COMMANDS
     assert clean_for_tts("[Pasture] **Hello**   there") == "Hello there"
     assert calculate_rms(b"\x00\x00" * 20) == 0
+
+
+def test_scripted_conversation_simulates_wake_to_reply(capsys):
+    result = simulate_conversation.run_simulation(
+        simulate_conversation.SimulationOptions(
+            utterances=["hey jarvis", "what time is it"],
+            fake_reply="It is test time.",
+        )
+    )
+
+    output = capsys.readouterr().out
+
+    assert result.wake_triggered is True
+    assert result.commands == ["what time is it"]
+    assert "Voice event: wake_heard_simulated" in output
+    assert "Command: what time is it" in output
+    assert "Jarvis (muted): It is test time." in output
 
 
 def test_daily_context_suggestions_and_affirmative_bridge():

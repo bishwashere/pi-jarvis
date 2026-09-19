@@ -6,7 +6,19 @@ import sys
 import wave
 from array import array
 
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except ModuleNotFoundError:
+    class _MissingSoundDevice:
+        def _raise(self, *args, **kwargs):
+            raise ModuleNotFoundError(
+                "sounddevice is required for PortAudio playback. "
+                "Install project dependencies with uv sync."
+            )
+
+        RawOutputStream = _raise
+
+    sd = _MissingSoundDevice()
 
 from config import (
     CONFIGURE_VOLUME,

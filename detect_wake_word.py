@@ -2,8 +2,6 @@ import json
 import time
 from difflib import SequenceMatcher
 
-from vosk import KaldiRecognizer
-
 from config import (
     DUPLICATE_WAKE_SECONDS,
     LENIENT_WAKE_LEVEL,
@@ -128,12 +126,16 @@ def has_wake_word(text: str) -> bool:
 
 class WakeWordMonitor:
     def __init__(self, model):
+        from vosk import KaldiRecognizer
+
         self.model = model
         self.recognizer = KaldiRecognizer(model, SAMPLE_RATE)
         self.last_trigger_time = 0
         self.last_partial = ""
 
     def reset(self):
+        from vosk import KaldiRecognizer
+
         self.recognizer = KaldiRecognizer(self.model, SAMPLE_RATE)
         self.last_partial = ""
 

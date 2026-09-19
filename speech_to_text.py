@@ -7,8 +7,6 @@ import time
 import wave
 from array import array
 
-from vosk import KaldiRecognizer
-
 from config import (
     COMMAND_AUDIO_RMS_THRESHOLD,
     COMMAND_MIN_RECORD_SECONDS,
@@ -227,6 +225,8 @@ def build_quick_command_recognizer(model):
     if not QUICK_COMMAND_ENABLED or model is None or not QUICK_COMMANDS:
         return None
 
+    from vosk import KaldiRecognizer
+
     grammar = sorted(QUICK_COMMANDS) + ["[unk]"]
     return KaldiRecognizer(model, SAMPLE_RATE, json.dumps(grammar))
 
@@ -425,6 +425,8 @@ def listen_for_command_with_whisper(model, seconds: int) -> str:
 def listen_for_command(model, seconds: int = MAX_COMMAND_SECONDS, allow_wake_interrupt: bool = True) -> str:
     if COMMAND_STT_ENGINE.lower() == "whisper":
         return listen_for_command_with_whisper(model, seconds)
+
+    from vosk import KaldiRecognizer
 
     recognizer = KaldiRecognizer(model, SAMPLE_RATE)
 

@@ -1,6 +1,20 @@
 import queue
 
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except ModuleNotFoundError:
+    class _MissingSoundDevice:
+        def _raise(self, *args, **kwargs):
+            raise ModuleNotFoundError(
+                "sounddevice is required for microphone access. "
+                "Install project dependencies with uv sync."
+            )
+
+        check_input_settings = _raise
+        query_devices = _raise
+        RawInputStream = _raise
+
+    sd = _MissingSoundDevice()
 
 from config import AUDIO_DEVICE, AUDIO_DEVICE_FALLBACKS, SAMPLE_RATE
 
