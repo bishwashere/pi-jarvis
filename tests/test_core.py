@@ -7,6 +7,7 @@ import call_agent_api
 import conversation_loop
 import listen_to_mic
 import play_audio
+import speech_to_text
 import text_to_speech
 import simulate_conversation
 from daily_context import contextualize_affirmative_command, parse_suggestions
@@ -157,6 +158,40 @@ def test_write_wav_accepts_a_filename_without_a_directory(tmp_path, monkeypatch)
         assert audio.getsampwidth() == 2
         assert audio.getframerate() == 16000
         assert audio.getnframes() == 40
+
+
+def test_quick_command_is_ignored_before_speech_threshold(monkeypatch):
+    class FakeAudioQueue:
+        def __init__(self):
+            self.returned_frame = False
+
+        def get(self, timeout):
+            if not self.returned_frame:
+                self.returned_frame = True
+                return b"\x01\x00" * 160
+            raise speech_to_text.queue.Empty
+
+    class NoopStream:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    quick_calls = []
+    monkeypatch.setattr(speech_to_text, "clear_audio_queue", lambda: None)
+    monkeypatch.setattr(speech_to_text, "open_microphone_stream", lambda: NoopStream())
+    monkeypatch.setattr(speech_to_text, "audio_queue", FakeAudioQueue())
+    monkeypatch.setattr(speech_to_text, "build_quick_command_recognizer", lambda model: object())
+    monkeypatch.setattr(
+        speech_to_text,
+        "detect_quick_command",
+        lambda recognizer, data, source: quick_calls.append(data) or "bye",
+    )
+    monkeypatch.setattr(speech_to_text, "voice_event", lambda *args, **kwargs: None)
+
+    assert speech_to_text.record_command_audio(0.01, model=object()) == ("", "")
+    assert quick_calls == []
 
 
 def test_ask_and_speak_uses_pasture_protocol(monkeypatch):

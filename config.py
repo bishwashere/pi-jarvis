@@ -276,7 +276,7 @@ CHECKING_REPLIES = [
     "Let me look.",
     "I'll check.",
 ]
-CHECKING_REPLY_DELAY_SECONDS = 1.8
+CHECKING_REPLY_DELAY_SECONDS = 4.0
 STILL_CHECKING_REPLIES = [
     "Still checking.",
     "Almost there.",
@@ -284,7 +284,7 @@ STILL_CHECKING_REPLIES = [
     "One more moment.",
     "Working on it.",
 ]
-STILL_CHECKING_REPLY_DELAY_SECONDS = 3.0
+STILL_CHECKING_REPLY_DELAY_SECONDS = 9.0
 STANDBY_REPLIES = [
     "Resting now.",
     "Talk to you later.",

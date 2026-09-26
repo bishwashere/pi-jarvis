@@ -270,21 +270,6 @@ def record_command_audio(seconds: int, model=None) -> tuple[str, str]:
                 continue
 
             frames.append(data)
-            quick_command = detect_quick_command(
-                quick_recognizer,
-                data,
-                source="recording",
-            )
-            if quick_command:
-                elapsed = time.time() - start
-                voice_event(
-                    "audio_recording_finished",
-                    reason="quick_command",
-                    elapsed_seconds=f"{elapsed:.1f}",
-                    peak_rms=f"{peak_rms:.0f}",
-                )
-                return quick_command, ""
-
             rms = calculate_rms(data)
             peak_rms = max(peak_rms, rms)
 
@@ -304,6 +289,22 @@ def record_command_audio(seconds: int, model=None) -> tuple[str, str]:
                     )
                 speech_started = True
                 last_voice_time = time.time()
+
+            if speech_started:
+                quick_command = detect_quick_command(
+                    quick_recognizer,
+                    data,
+                    source="recording",
+                )
+                if quick_command:
+                    elapsed = time.time() - start
+                    voice_event(
+                        "audio_recording_finished",
+                        reason="quick_command",
+                        elapsed_seconds=f"{elapsed:.1f}",
+                        peak_rms=f"{peak_rms:.0f}",
+                    )
+                    return quick_command, ""
 
             if (
                 speech_started
