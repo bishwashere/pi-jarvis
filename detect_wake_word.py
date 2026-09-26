@@ -10,6 +10,12 @@ from config import (
 )
 from voice_log import voice_event
 
+
+WAKE_WORD_ALIASES = {
+    "below": "hello",
+}
+
+
 def normalize_text(text: str) -> str:
     return " ".join(text.lower().strip().split())
 
@@ -64,6 +70,18 @@ def get_wake_match(text: str, allow_lenient: bool = True) -> dict:
                 "heard": heard,
                 "matched": wake,
                 "candidate": wake,
+                "score": 1.0,
+            }
+
+    for candidate in iter_candidate_phrases(heard):
+        alias_match = WAKE_WORD_ALIASES.get(candidate)
+        if alias_match:
+            return {
+                "triggered": True,
+                "mode": "alias",
+                "heard": heard,
+                "matched": alias_match,
+                "candidate": candidate,
                 "score": 1.0,
             }
 

@@ -38,6 +38,14 @@ def test_parse_agent_reply_supports_plain_text_and_json():
 
 def test_wake_word_and_text_cleanup():
     assert get_wake_match("hey jarvis")["triggered"] is True
+    assert get_wake_match("below this") == {
+        "triggered": True,
+        "mode": "alias",
+        "heard": "below this",
+        "matched": "hello",
+        "candidate": "below",
+        "score": 1.0,
+    }
     assert remove_wake_words("hey jarvis tell me the time") == "tell me the time"
     assert clean_command_transcript("Hi.") == WAKE_ONLY_COMMAND
     assert clean_command_transcript("hello computer?") == WAKE_ONLY_COMMAND
