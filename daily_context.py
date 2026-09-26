@@ -6,7 +6,6 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from call_agent_api import ask_pasture_for_daily_context
 from config import (
     DAILY_CONTEXT_ENABLED,
     DAILY_CONTEXT_MAX_SUGGESTIONS,
@@ -155,42 +154,16 @@ def parse_suggestions(content: str) -> list[str]:
     return suggestions
 
 
-def build_refresh_prompt(utterances: list[dict]) -> str:
-    recent = utterances[-20:]
-    lines = "\n".join(
-        f"- {item.get('text', '').strip()}" for item in recent if item.get("text")
-    )
-    return (
-        "Internal Raspberry Pi Jarvis task. This is not a user-facing chat turn.\n"
-        "From today's voice commands, create short optional wake prompts Jarvis may say later.\n"
-        "Each prompt should be natural, spoken, and specific to likely unfinished context.\n"
-        "Return JSON only: {\"suggestions\":[\"Do you still want to check the weather?\"]}.\n"
-        "Use at most 6 suggestions, each under 12 words. Avoid generic help phrases.\n\n"
-        f"Today's user voice commands:\n{lines}"
-    )
-
-
 def refresh_context_bucket():
     state = load_state()
     utterances = state.get("utterances", [])
     if len(utterances) < DAILY_CONTEXT_MIN_UTTERANCES:
         return
 
-    prompt = build_refresh_prompt(utterances)
-    try:
-        content = ask_pasture_for_daily_context(prompt)
-        suggestions = parse_suggestions(content)
-    except Exception as e:
-        print(f"Daily context refresh failed: {e}", flush=True)
-        return
-
     current = load_state()
-    if suggestions:
-        current["suggestions"] = [{"text": text, "ts": time.time()} for text in suggestions]
     current["last_refresh_ts"] = time.time()
     save_state(current)
-    if suggestions:
-        print(f"Daily context suggestions refreshed: {suggestions}", flush=True)
+    print("Daily context refresh skipped; external suggestion providers are disabled.", flush=True)
 
 
 def maybe_refresh_context_bucket_async():

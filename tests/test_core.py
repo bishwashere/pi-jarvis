@@ -9,9 +9,9 @@ import listen_to_mic
 import play_audio
 import text_to_speech
 import simulate_conversation
-from call_agent_api import parse_agent_reply
 from daily_context import contextualize_affirmative_command, parse_suggestions
 from detect_wake_word import get_wake_match
+from call_agent_api import parse_agent_reply
 from speech_to_text import (
     QUICK_COMMANDS,
     WAKE_ONLY_COMMAND,
@@ -44,11 +44,32 @@ def test_wake_word_and_text_cleanup():
     assert clean_command_transcript("Jarvis, what time is it?") == "what time is it"
     assert "yes" in QUICK_COMMANDS
     assert "do nothing" in QUICK_COMMANDS
-    assert clean_for_tts("[Pasture] **Hello**   there") == "Hello there"
+    assert "weather today" not in QUICK_COMMANDS
+    assert "what time is it" not in QUICK_COMMANDS
+    assert clean_for_tts("[Jarvis] **Hello**   there") == "Hello there"
     assert calculate_rms(b"\x00\x00" * 20) == 0
 
 
-def test_scripted_conversation_simulates_wake_to_reply(capsys):
+def test_scripted_conversation_simulates_wake_to_reply(capsys, monkeypatch):
+    transcripts = iter(["hey jarvis", "what time is it"])
+
+    def fake_synthesize(text, output_path):
+        frames = b"\x00\x00" * 160
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(output_path, "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(16000)
+            audio.writeframes(frames)
+        return output_path
+
+    monkeypatch.setattr(conversation_loop, "synthesize_to_wav", fake_synthesize)
+    monkeypatch.setattr(
+        simulate_conversation,
+        "transcribe_audio_file",
+        lambda path, model=None, clean=True: next(transcripts),
+    )
+
     result = simulate_conversation.run_simulation(
         simulate_conversation.SimulationOptions(
             utterances=["hey jarvis", "what time is it"],
@@ -62,7 +83,50 @@ def test_scripted_conversation_simulates_wake_to_reply(capsys):
     assert result.commands == ["what time is it"]
     assert "Voice event: wake_heard_simulated" in output
     assert "Command: what time is it" in output
-    assert "Jarvis (muted): It is test time." in output
+    assert "Jarvis (muted audio): It is test time." in output
+
+
+def test_audio_simulation_transcribes_input_and_waits_for_muted_output(monkeypatch):
+    transcripts = iter(["hey jarvis", "what time is it"])
+
+    def fake_synthesize(text, output_path):
+        frames = b"\x00\x00" * 160
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(output_path, "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(16000)
+            audio.writeframes(frames)
+        return output_path
+
+    monkeypatch.setattr(conversation_loop, "synthesize_to_wav", fake_synthesize)
+    monkeypatch.setattr(
+        simulate_conversation,
+        "transcribe_audio_file",
+        lambda path, model=None, clean=True: next(transcripts),
+    )
+
+    result = simulate_conversation.run_simulation(
+        simulate_conversation.SimulationOptions(
+            utterances=["hey jarvis", "what time is it"],
+            fake_reply="It is test time.",
+        )
+    )
+
+    assert result.commands == ["what time is it"]
+    assert any(
+        event["phase"] == "input"
+        and event["kind"] == "initial"
+        and event["stt_seconds"] >= 0
+        for event in result.audio_events
+    )
+    assert any(
+        event["phase"] == "output"
+        and event["kind"] == "answer"
+        and event["audio_seconds"] == 0.01
+        and event["playback_seconds"] == 0.01
+        for event in result.audio_events
+    )
 
 
 def test_daily_context_suggestions_and_affirmative_bridge():
@@ -87,33 +151,24 @@ def test_write_wav_accepts_a_filename_without_a_directory(tmp_path, monkeypatch)
         assert audio.getnframes() == 40
 
 
-def test_agent_request_uses_openai_compatible_payload(monkeypatch):
+def test_ask_and_speak_uses_pasture_protocol(monkeypatch):
+    monkeypatch.setattr(conversation_loop, "voice_event", lambda *args, **kwargs: None)
+    monkeypatch.setattr(conversation_loop, "speak", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        conversation_loop,
+        "wait_for_result_or_wake_word",
+        lambda func, model, user_text, **kwargs: func(user_text),
+    )
     captured = {}
 
-    class Response:
-        def raise_for_status(self):
-            captured["checked"] = True
+    def fake_ask_pasture(user_text):
+        captured["user_text"] = user_text
+        return {"reply": "From Passer.", "continue_listening": False}
 
-        def json(self):
-            return {"choices": [{"message": {"content": "Hello"}}]}
+    monkeypatch.setattr(conversation_loop, "ask_pasture", fake_ask_pasture)
 
-    def fake_post(url, **kwargs):
-        captured.update(url=url, kwargs=kwargs)
-        return Response()
-
-    monkeypatch.setattr(call_agent_api.requests, "post", fake_post)
-
-    assert call_agent_api.ask_pasture("status") == {
-        "reply": "Hello",
-        "continue_listening": False,
-    }
-    assert captured["url"] == call_agent_api.API_URL
-    assert captured["kwargs"]["timeout"] == 60
-    assert captured["kwargs"]["json"]["messages"][-1] == {
-        "role": "user",
-        "content": "status",
-    }
-    assert captured["checked"] is True
+    assert conversation_loop.ask_and_speak("thank you", object()) is False
+    assert captured == {"user_text": "thank you"}
 
 
 def test_tts_creates_parent_and_invokes_configured_piper(tmp_path, monkeypatch):
@@ -339,7 +394,7 @@ def test_local_command_is_queued_for_voice_loop():
     assert conversation_loop.get_pending_local_command() == {"text": "Welcome home."}
 
 
-def test_command_server_instruction_uses_conversation_followup(monkeypatch):
+def test_command_server_instruction_acts_as_wake_and_listens_for_command(monkeypatch):
     events = []
 
     monkeypatch.setattr(conversation_loop, "clear_audio_queue", lambda: events.append(("clear",)))
@@ -350,8 +405,8 @@ def test_command_server_instruction_uses_conversation_followup(monkeypatch):
     )
     monkeypatch.setattr(
         conversation_loop,
-        "get_followup_until",
-        lambda model, seconds: "turn on the bedroom light",
+        "get_command_with_retries",
+        lambda model: "turn on the bedroom light",
     )
     monkeypatch.setattr(
         conversation_loop,
@@ -366,5 +421,33 @@ def test_command_server_instruction_uses_conversation_followup(monkeypatch):
     assert events == [
         ("clear",),
         ("speak", "Welcome home.", "command_server"),
-        ("process", "turn on the bedroom light", True, None),
+        ("process", "turn on the bedroom light", False, None),
+    ]
+
+
+def test_command_server_instruction_command_timeout_is_silent(monkeypatch):
+    events = []
+
+    monkeypatch.setattr(conversation_loop, "clear_audio_queue", lambda: events.append(("clear",)))
+    monkeypatch.setattr(
+        conversation_loop,
+        "speak",
+        lambda text, model=None, kind="speech": events.append(("speak", text, kind)),
+    )
+    monkeypatch.setattr(
+        conversation_loop,
+        "get_command_with_retries",
+        lambda model: "",
+    )
+    monkeypatch.setattr(
+        conversation_loop,
+        "confirm_standby_if_served",
+        lambda served_turn, model: events.append(("standby", served_turn)),
+    )
+
+    conversation_loop.handle_command_server_instruction(object(), {"text": "Welcome home."})
+
+    assert events == [
+        ("clear",),
+        ("speak", "Welcome home.", "command_server"),
     ]

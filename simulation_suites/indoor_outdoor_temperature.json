@@ -1,0 +1,14 @@
+{
+  "description": "Wake and ask for the current indoor and outdoor temperature through the local Jarvis responder.",
+  "utterances": [
+    "hi",
+    "what is the indoor and outdoor temperature?"
+  ],
+  "fake_reply": "Simulated indoor and outdoor temperature reply from Jarvis.",
+  "fake_continue_listening": false,
+  "fake_response_latency": 0.5,
+  "command_delay": 1.0,
+  "followup_delay": 1.0,
+  "idle_followup_delay": 0.0,
+  "summary_json": false
+}

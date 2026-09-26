@@ -409,25 +409,17 @@ def handle_command_server_instruction(model, payload: dict):
     voice_event("command_server_instruction_started", text=text)
     speak(text, model=model, kind="command_server")
 
-    listen_started_at = time.time()
     try:
-        command = get_followup_until(model, FOLLOWUP_SECONDS)
+        command = get_command_with_retries(model)
     except WakeWordInterrupted:
-        print("Wake phrase interrupted command-server follow-up; listening for command.", flush=True)
+        print("Wake phrase interrupted command-server command listening; listening again.", flush=True)
         command = get_command_with_retries(model)
 
     if not command:
-        elapsed = time.time() - listen_started_at
-        voice_event(
-            "followup_listen_finished",
-            result="no_followup_after_command_server",
-            elapsed_seconds=f"{elapsed:.1f}",
-            seconds=FOLLOWUP_SECONDS,
-        )
-        confirm_standby_if_served(True, model)
+        voice_event("command_listen_finished", result="no_command_after_command_server")
         return
 
-    process_command_loop(model, command, served_turn=True, wake_context_prompt=None)
+    process_command_loop(model, command, served_turn=False, wake_context_prompt=None)
 
 
 def run_assistant():

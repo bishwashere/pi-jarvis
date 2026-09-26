@@ -3,6 +3,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd -- "${JARVIS_PROJECT_DIR:-$SCRIPT_DIR}" && pwd)"
+ENV_FILE="${JARVIS_ENV_FILE:-$PROJECT_DIR/.env}"
+if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+fi
 VENV_DIR="${JARVIS_VENV_DIR:-$PROJECT_DIR/runtime/venv}"
 if [[ "$VENV_DIR" != /* ]]; then
     VENV_DIR="$PROJECT_DIR/$VENV_DIR"

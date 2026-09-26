@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOCAL_PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${PI_ENV_FILE:-$LOCAL_PROJECT_DIR/.env}"
+ASKPASS_FILE="$LOCAL_PROJECT_DIR/.ssh_askpass"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "Pi environment file not found: $ENV_FILE" >&2
+  exit 1
+fi
+
+if [[ ! -x "$ASKPASS_FILE" ]]; then
+  echo "Pi SSH askpass helper is not executable: $ASKPASS_FILE" >&2
+  exit 1
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+if [[ -z "${RASPBERRY_PI_SSH:-}" ]]; then
+  echo "RASPBERRY_PI_SSH is not set in $ENV_FILE" >&2
+  exit 1
+fi
+
+export PI_ENV_FILE="$ENV_FILE"
+export SSH_ASKPASS="$ASKPASS_FILE"
+export SSH_ASKPASS_REQUIRE=force
+export DISPLAY="${DISPLAY:-:0}"
+
+exec ssh \
+  -o BatchMode=no \
+  -o NumberOfPasswordPrompts=1 \
+  "$RASPBERRY_PI_SSH" \
+  "$@"

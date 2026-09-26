@@ -124,10 +124,10 @@ On Windows PowerShell, the equivalent checks are:
 .\runtime\venv\Scripts\python.exe -m pytest
 ```
 
-Check the agent API from the Pi:
+Check the command center from the Mac or another LAN client:
 
 ```sh
-curl http://192.168.1.82:1235/v1/agents/jarvis/health
+curl http://192.168.1.85:8765/health
 ```
 
 Check whether Jarvis is running:
@@ -206,6 +206,17 @@ jarvis status
 jarvis logs
 ```
 
+From this checkout on the Mac, use the repository SSH wrapper for remote Pi
+checks. It reads `RASPBERRY_PI_SSH` from `.env` and uses `.ssh_askpass`, so do
+not substitute another host/user or add `BatchMode=yes`. In Codex, this is a
+LAN network command, so run it with escalated network permissions on the first
+attempt:
+
+```sh
+./bin/pi-ssh 'jarvis status'
+./bin/pi-ssh 'tail -n 100 /home/jarvis/jarvis/logs/jarvis_voice.log'
+```
+
 ## 5. Configuration Reference
 
 Defaults live in `config.py`. Repository assets and logs are resolved from the
@@ -224,6 +235,7 @@ using environment variables.
 - Initial command listen window: `60` seconds, with an earlier stop after speech followed by a short silence.
 - Follow-up listen window after an answer: `4` seconds.
 - Agent API: `http://192.168.1.82:1235/v1/agents/jarvis`
+- Command center: `http://192.168.1.85:8765` on the deployed Jarvis Pi.
 - Vosk model: `runtime/assets/vosk-model-small-en-us-0.15`
 - Piper voice model: `runtime/assets/piper/en_US-amy-medium.onnx`
 
@@ -278,14 +290,15 @@ curl -X POST http://127.0.0.1:8765/command \
 
 Jarvis speaks the queued text with the same playback and voice-event logging as
 normal replies, then opens the regular follow-up listen window. If the user
-answers, that command goes through the usual command capture, Pasture API, reply,
+answers, that command goes through the usual command capture, Passer API, reply,
 and follow-up loop. If the user stays silent, Jarvis naturally returns to wake
 listening.
 
-To let Home Assistant call it over the LAN, set `JARVIS_COMMAND_SERVER_HOST=0.0.0.0`
-and set `JARVIS_COMMAND_SERVER_TOKEN`. Jarvis refuses to bind outside localhost
-without a token. Send the token as either `Authorization: Bearer <token>` or
-`X-Jarvis-Token: <token>`.
+To let Home Assistant call it over the LAN, set `JARVIS_COMMAND_SERVER_TOKEN`.
+When a token is configured and `JARVIS_COMMAND_SERVER_HOST` is not set, Jarvis
+listens on `0.0.0.0:8765`. Without a token, it stays on localhost. You can set
+`JARVIS_COMMAND_SERVER_HOST` explicitly to override either default. Send the
+token as either `Authorization: Bearer <token>` or `X-Jarvis-Token: <token>`.
 
 ## 8. Scripted Conversation Simulation
 
@@ -312,31 +325,15 @@ runtime/venv/bin/python simulate_conversation.py \
   --suite simulation_suites/weather_followup.json
 ```
 
-By default this uses a fake API reply and muted playback, but it still runs
-through wake matching, wake reply selection, command cleanup, normal command
-handling, reply handling, follow-up timeout behavior, and voice-event logs. Add
-timing flags to mimic the time between wake and command:
-
-```bash
-runtime/venv/bin/python simulate_conversation.py \
-  --command-delay 2 \
-  --fake-api-latency 1.5 \
-  "hey jarvis" \
-  "what time is it"
-```
-
-To call the configured Jarvis/Pasture API while keeping microphone and speaker
-out of the loop:
-
-```bash
-runtime/venv/bin/python simulate_conversation.py --real-api \
-  "hey jarvis" \
-  "what time is it"
-```
-
-Use `--summary-json` when you want machine-readable timing output.
-Use `--audio-mode synthesize` to run Piper/TTS conversion while still skipping
-speaker playback.
+The simulator converts scripted utterances to WAV, transcribes them through the
+configured speech-to-text engine, synthesizes each spoken reply with Piper, and
+waits for the generated WAV duration without playing through the speaker. It
+still runs through wake matching, wake reply selection, command cleanup, normal
+command handling, reply handling, follow-up timeout behavior, and voice-event
+logs. Timing delays, fake replies, and JSON summaries are suite data, not
+command-line modes.
+If Piper, `whisper.cpp`, or the configured Vosk runtime is unavailable, the
+simulation fails at that audio step; there is no text-only fallback path.
 
 ## 9. Log Examples
 
@@ -351,7 +348,7 @@ Press Ctrl+C to stop.
 Waiting for wake word...
 ```
 
-The log includes what speech recognition heard, what was sent to the Pasture API, and what came back:
+The log includes what speech recognition heard, what was sent to the Passer API, and what came back:
 
 ```text
 Command: news headlines
@@ -368,7 +365,7 @@ In Whisper command mode, command capture looks like this:
 ```text
 Listening for command with Whisper for up to 60 seconds...
 Recording command audio for up to 60 seconds...
-Whisper command recording detected speech after 1.0s (rms=1234).
+Whisper command recording detected speech after 1.0s (rms=456).
 Stopped recording after 4.2s: speech followed by 1.2s silence; saved /path/to/pi-jarvis/logs/command.wav (peak rms=4567).
 Whisper transcribing /path/to/pi-jarvis/logs/command.wav...
 Whisper transcript after 3.3s: 'what is the weather today'
@@ -378,12 +375,12 @@ Command: what is the weather today
 ## 10. Project Layout
 
 - `jarvis_voice.py` - main entry point.
-- `config.py` - audio devices, wake words, API URL, model paths, timing, and spoken phrases.
+- `config.py` - audio devices, wake words, API URL, command center settings, model paths, timing, and spoken phrases.
 - `conversation_loop.py` - wake/listen/ask/speak loop.
 - `jarvis_command_server.py` - local HTTP command endpoint for Home Assistant.
 - `listen_to_mic.py` - microphone stream using `sounddevice`.
 - `speech_to_text.py` and `detect_wake_word.py` - Vosk speech recognition and wake-word detection.
-- `call_agent_api.py` - HTTP calls to the Jarvis/Pasture agent API.
+- `call_agent_api.py` - HTTP calls to the Jarvis/Passer agent API.
 - `text_to_speech.py` and `play_audio.py` - Piper TTS and cross-platform playback.
 - `self_test.py` - local smoke test that avoids hardware, network, and Whisper.
 - `run_local.sh` - local development profile using bundled Vosk and default audio.
@@ -402,4 +399,4 @@ Command: what is the weather today
 - If audio plays through the wrong speaker on Linux, run `aplay -l` and update `PLAYBACK_DEVICE`. On Windows, use the `sounddevice` command above and set `JARVIS_PLAYBACK_DEVICE` to the desired name or index.
 - If Windows blocks the PowerShell launcher, allow scripts only for the current shell with `Set-ExecutionPolicy -Scope Process Bypass`, then run `.\run_local.ps1` again.
 - Windows x64 is supported by the locked native packages; Windows ARM and 32-bit Windows are not currently validated.
-- If the assistant says it cannot reach Pasture, confirm the API host is online and reachable from the machine running Jarvis.
+- If LAN clients cannot reach Jarvis, confirm they are using the deployed Pi address and command-center port, for example `http://192.168.1.85:8765`.

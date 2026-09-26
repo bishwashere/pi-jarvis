@@ -16,7 +16,7 @@ def _env_path(name: str, default: Path) -> str:
     path = Path(raw_value).expanduser() if raw_value else default
     if not path.is_absolute():
         path = PROJECT_DIR / path
-    return str(path.resolve())
+    return str(path.absolute())
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -40,9 +40,13 @@ def _audio_device(value: str):
     return stripped
 
 
+_default_project_dir = Path(__file__).resolve().parent
 PROJECT_DIR = Path(
-    os.environ.get("JARVIS_PROJECT_DIR", Path(__file__).resolve().parent)
-).expanduser().resolve()
+    os.environ.get("JARVIS_PROJECT_DIR", _default_project_dir)
+).expanduser()
+if not PROJECT_DIR.is_absolute():
+    PROJECT_DIR = _default_project_dir / PROJECT_DIR
+PROJECT_DIR = PROJECT_DIR.absolute()
 RUNTIME_DIR = PROJECT_DIR / "runtime"
 ASSETS_DIR = RUNTIME_DIR / "assets"
 LOG_DIR = PROJECT_DIR / "logs"
@@ -102,7 +106,7 @@ WHISPER_CPP_DIR = Path(
 ).expanduser()
 if not WHISPER_CPP_DIR.is_absolute():
     WHISPER_CPP_DIR = PROJECT_DIR / WHISPER_CPP_DIR
-WHISPER_CPP_DIR = WHISPER_CPP_DIR.resolve()
+WHISPER_CPP_DIR = WHISPER_CPP_DIR.absolute()
 WHISPER_CPP_BINARY = _env_path(
     "JARVIS_WHISPER_CPP_BINARY",
     WHISPER_CPP_DIR / "build/bin/whisper-cli",
@@ -147,10 +151,6 @@ QUICK_COMMAND_PHRASES = [
                 "nevermind",
                 "bye",
                 "goodbye",
-                "weather",
-                "weather today",
-                "time",
-                "what time is it",
             ]
         ),
     ).split(",")
@@ -203,6 +203,8 @@ API_CONTEXT_CONVERSATION_ID = os.environ.get(
     "JARVIS_API_CONTEXT_CONVERSATION_ID",
     f"{API_CONVERSATION_ID}-daily-context",
 )
+CONTINUE_LISTENING_DEFAULT = _env_bool("JARVIS_CONTINUE_LISTENING_DEFAULT", False)
+
 
 SYSTEM_PROMPT = (
     "You are a voice assistant running through a Raspberry Pi. "
@@ -234,13 +236,15 @@ COMMAND_RETRY_COUNT = 1
 # If the API/server call fails, retry this many times.
 API_RETRY_COUNT = 2
 
-
 # ---------- Local Jarvis command server ----------
 
 COMMAND_SERVER_ENABLED = _env_bool("JARVIS_COMMAND_SERVER_ENABLED", True)
-COMMAND_SERVER_HOST = os.environ.get("JARVIS_COMMAND_SERVER_HOST", "127.0.0.1")
 COMMAND_SERVER_PORT = int(os.environ.get("JARVIS_COMMAND_SERVER_PORT", "8765"))
 COMMAND_SERVER_TOKEN = os.environ.get("JARVIS_COMMAND_SERVER_TOKEN", "").strip()
+COMMAND_SERVER_HOST = os.environ.get(
+    "JARVIS_COMMAND_SERVER_HOST",
+    "0.0.0.0" if COMMAND_SERVER_TOKEN else "127.0.0.1",
+)
 
 
 # ---------- Voice / TTS ----------
@@ -296,16 +300,6 @@ EMPTY_RESPONSE_REPLY = "I have no response."
 
 # Limit text passed to TTS so long replies do not take forever.
 MAX_TTS_CHARS = 700
-
-
-# ---------- Conversation behavior ----------
-
-# If the server returns plain text, this controls whether the Pi should
-# automatically keep listening after every answer.
-#
-# False = after answer, listen only for FOLLOWUP_SECONDS, then return to wake mode.
-# True  = after every answer, keep listening like an active conversation.
-CONTINUE_LISTENING_DEFAULT = False
 
 
 # ---------- Daily context bucket ----------

@@ -1,9 +1,9 @@
 """Hardware-safe smoke test for a Pi Jarvis checkout.
 
-This deliberately avoids the microphone, speaker, Jarvis API, and optional
-whisper.cpp installation.  It validates the bundled models and the local
-Python/Piper runtime so developers can distinguish setup problems from missing
-external services or Raspberry Pi hardware.
+This deliberately avoids the microphone, speaker, command-center server, Jarvis
+API, and optional whisper.cpp installation.  It validates the bundled models
+and the local Python/Piper runtime so developers can distinguish setup problems
+from missing external services or Raspberry Pi hardware.
 """
 
 import os
@@ -14,7 +14,6 @@ from pathlib import Path
 
 from vosk import Model, SetLogLevel
 
-from call_agent_api import parse_agent_reply
 from config import (
     COMMAND_STT_ENGINE,
     PIPER_MODEL_PATH,
@@ -23,6 +22,7 @@ from config import (
     WHISPER_CPP_BINARY,
     WHISPER_MODEL_PATH,
 )
+from call_agent_api import parse_agent_reply
 from detect_wake_word import get_wake_match
 from text_to_speech import resolve_piper_binary, synthesize_to_wav
 
@@ -50,10 +50,10 @@ def check_configuration() -> str:
 def check_core_logic() -> str:
     reply = parse_agent_reply('{"reply":"Ready","continue_listening":true}')
     if reply != {"reply": "Ready", "continue_listening": True}:
-        raise AssertionError(f"unexpected API response parsing result: {reply}")
+        raise AssertionError(f"unexpected response parsing result: {reply}")
     if not get_wake_match("hey jarvis").get("triggered"):
         raise AssertionError("configured wake phrase was not recognized")
-    return "wake matching and API response parsing"
+    return "wake matching and response parsing"
 
 
 def check_vosk_model() -> str:
@@ -118,7 +118,7 @@ def main() -> int:
         print(f"Local self-test failed ({len(failures)} check(s)).")
         return 1
 
-    print("Local self-test passed. No microphone, speaker, or API was used.")
+    print("Local self-test passed. No microphone, speaker, command-center server, or API was used.")
     return 0
 
 

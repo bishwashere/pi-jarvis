@@ -341,7 +341,7 @@ def record_command_audio(seconds: int, model=None) -> tuple[str, str]:
     return "", COMMAND_RECORDING_PATH
 
 
-def transcribe_with_whisper(audio_path: str) -> str:
+def transcribe_with_whisper(audio_path: str, *, clean: bool = True) -> str:
     if not audio_path:
         return ""
 
@@ -391,7 +391,47 @@ def transcribe_with_whisper(audio_path: str) -> str:
         text=transcript,
     )
     print(f"Whisper transcript after {elapsed:.1f}s: {transcript!r}", flush=True)
-    return clean_command_transcript(transcript)
+    return clean_command_transcript(transcript) if clean else transcript
+
+
+def transcribe_with_vosk_file(audio_path: str, model=None, *, clean: bool = True) -> str:
+    if not audio_path:
+        return ""
+
+    from vosk import KaldiRecognizer, Model
+
+    start = time.time()
+    recognizer_model = model or Model(VOSK_MODEL_PATH)
+    final_parts = []
+
+    with wave.open(audio_path, "rb") as audio:
+        recognizer = KaldiRecognizer(recognizer_model, audio.getframerate())
+        while data := audio.readframes(4000):
+            if recognizer.AcceptWaveform(data):
+                text = json.loads(recognizer.Result()).get("text", "").strip()
+                if text:
+                    final_parts.append(text)
+
+        final = json.loads(recognizer.FinalResult()).get("text", "").strip()
+        if final:
+            final_parts.append(final)
+
+    elapsed = time.time() - start
+    transcript = " ".join(final_parts).strip()
+    voice_event(
+        "vosk_file_transcript",
+        elapsed_seconds=f"{elapsed:.1f}",
+        text=transcript,
+    )
+    print(f"Vosk file transcript after {elapsed:.1f}s: {transcript!r}", flush=True)
+    return clean_command_transcript(transcript) if clean else transcript
+
+
+def transcribe_audio_file(audio_path: str, model=None, *, clean: bool = True) -> str:
+    """Transcribe a WAV file through the configured command STT engine."""
+    if COMMAND_STT_ENGINE.lower() == "whisper":
+        return transcribe_with_whisper(audio_path, clean=clean)
+    return transcribe_with_vosk_file(audio_path, model=model, clean=clean)
 
 
 def listen_for_command_with_whisper(model, seconds: int) -> str:

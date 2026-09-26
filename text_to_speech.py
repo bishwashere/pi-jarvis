@@ -17,7 +17,7 @@ from config import (
 def clean_for_tts(text: str) -> str:
     text = text.strip()
 
-    text = re.sub(r"^\[Pasture\]\s*", "", text)
+    text = re.sub(r"^\[Jarvis\]\s*", "", text)
     text = re.sub(r"https?://\S+", " link ", text)
     text = re.sub(r"°\s*[fFcC]\b", " degrees ", text)
     text = text.replace("°", " degrees ")
@@ -29,8 +29,9 @@ def clean_for_tts(text: str) -> str:
     text = re.sub(r"[\"“”‘’]", "", text)
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"\s+([,.!?])", r"\1", text)
+    text = text.strip()
 
-    return text[:MAX_TTS_CHARS]
+    return text[:MAX_TTS_CHARS].strip()
 
 
 def resolve_piper_binary() -> str:

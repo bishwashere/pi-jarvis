@@ -30,7 +30,7 @@ def test_default_repository_paths_follow_checkout():
         "plughw:2,0" if sys.platform.startswith("linux") else "default"
     )
     assert config.PLAYBACK_DEVICE == expected_playback_device
-    assert config.API_BASE_URL == "http://192.168.1.82:1235/v1/agents/jarvis"
+    assert config.COMMAND_SERVER_PORT == 8765
 
 
 def test_environment_overrides_are_parsed_in_fresh_process(tmp_path):
@@ -44,7 +44,7 @@ print(json.dumps({
     "fallbacks": config.AUDIO_DEVICE_FALLBACKS,
     "backend": config.PLAYBACK_BACKEND,
     "volume": config.CONFIGURE_VOLUME,
-    "api": config.API_URL,
+    "command_server_port": config.COMMAND_SERVER_PORT,
 }))
 """
     environment = {
@@ -61,7 +61,7 @@ print(json.dumps({
             "JARVIS_AUDIO_DEVICE_FALLBACKS": "pulse,3",
             "JARVIS_PLAYBACK_BACKEND": "sounddevice",
             "JARVIS_CONFIGURE_VOLUME": "false",
-            "JARVIS_API_BASE_URL": "http://localhost:9999/agent/",
+            "JARVIS_COMMAND_SERVER_PORT": "9999",
         }
     )
 
@@ -82,7 +82,80 @@ print(json.dumps({
         "fallbacks": ["pulse", 3],
         "backend": "sounddevice",
         "volume": False,
-        "api": "http://localhost:9999/agent/chat/completions",
+        "command_server_port": 9999,
+    }
+
+
+def test_command_server_binds_to_lan_when_token_is_configured():
+    script = """
+import json
+import config
+print(json.dumps({
+    "host": config.COMMAND_SERVER_HOST,
+    "token": config.COMMAND_SERVER_TOKEN,
+}))
+"""
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("JARVIS_")
+    }
+    environment.update(
+        {
+            "PYTHONPATH": str(PROJECT_ROOT),
+            "JARVIS_COMMAND_SERVER_TOKEN": "secret",
+        }
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert json.loads(result.stdout) == {
+        "host": "0.0.0.0",
+        "token": "secret",
+    }
+
+
+def test_command_server_explicit_host_override_is_preserved():
+    script = """
+import json
+import config
+print(json.dumps({
+    "host": config.COMMAND_SERVER_HOST,
+    "token": config.COMMAND_SERVER_TOKEN,
+}))
+"""
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("JARVIS_")
+    }
+    environment.update(
+        {
+            "PYTHONPATH": str(PROJECT_ROOT),
+            "JARVIS_COMMAND_SERVER_HOST": "127.0.0.1",
+            "JARVIS_COMMAND_SERVER_TOKEN": "secret",
+        }
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert json.loads(result.stdout) == {
+        "host": "127.0.0.1",
+        "token": "secret",
     }
 
 

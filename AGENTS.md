@@ -10,11 +10,12 @@ Pi Jarvis is a Python voice-assistant runtime. The main flow is:
 1. `jarvis_voice.py` initializes the runtime.
 2. Vosk listens for a configured wake phrase.
 3. `speech_to_text.py` transcribes the command with Whisper or Vosk.
-4. `call_agent_api.py` calls the configured OpenAI-compatible Jarvis API.
+4. `call_agent_api.py` sends the command to the configured Jarvis/Passer API.
 5. Piper synthesizes the response and `play_audio.py` plays it.
 
 Keep hardware and service boundaries clear. Microphone input, speaker output,
-Piper, `whisper.cpp`, and the Jarvis API may be unavailable during development.
+Piper, `whisper.cpp`, and the Jarvis/Passer API may be unavailable during
+development.
 
 ## Environment and dependencies
 
@@ -72,6 +73,29 @@ Piper, `whisper.cpp`, and the Jarvis API may be unavailable during development.
 - Changes to microphone, playback, TTS, or subprocess code must consider both
   the Linux/ALSA path and the Windows/PortAudio path.
 
+## Remote Raspberry Pi access
+
+- For any request to inspect Jarvis on the Pi, check Jarvis logs, restart
+  Jarvis, or run a remote test, use the repository wrapper:
+
+  ```sh
+  ./bin/pi-ssh 'jarvis status'
+  ./bin/pi-ssh 'tail -n 100 /home/jarvis/jarvis/logs/jarvis_voice.log'
+  ```
+
+- In Codex, run `./bin/pi-ssh ...` with escalated network permissions on the
+  first attempt. SSH to the Pi is a LAN network operation and the sandbox blocks
+  it; do not first try an un-escalated SSH command and then recover.
+- Do not invent SSH users, hosts, or IP addresses. The wrapper reads
+  `RASPBERRY_PI_SSH` from `.env` and uses `.ssh_askpass` to read the password
+  from the same file. In particular, do not assume the service IP is the SSH
+  host.
+- Do not pass `BatchMode=yes` for this project. It disables the required
+  askpass/password flow and causes misleading `Permission denied` failures.
+- When checking the command-center receive API from the Mac/LAN, use the Pi's
+  LAN address: `http://192.168.1.85:8765/health`. SSH management still goes
+  through `./bin/pi-ssh`.
+
 ## Validation
 
 On Linux or Raspberry Pi, run:
@@ -102,8 +126,9 @@ UV_PROJECT_ENVIRONMENT=runtime/venv uv sync --dry-run \
 
 The test suite must mock microphone, speaker, and network boundaries. Keep
 `self_test.py` safe to run without opening the microphone, playing audio, or
-contacting the API. Add regression coverage for every behavior change and for
-both platform branches when platform dispatch is affected.
+starting the command-center server or contacting the API. Add regression
+coverage for every behavior change and for both platform branches when platform
+dispatch is affected.
 
 The full assistant loop waits for real microphone input and may contact a
 private LAN API. Run it only as an intentional hardware/integration check. Do
