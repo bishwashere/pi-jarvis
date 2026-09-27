@@ -214,6 +214,30 @@ def test_ask_and_speak_uses_pasture_protocol(monkeypatch):
     assert captured == {"user_text": "thank you"}
 
 
+def test_ask_and_speak_can_suppress_waiting_announcements(monkeypatch):
+    wait_kwargs = {}
+
+    monkeypatch.setattr(conversation_loop, "voice_event", lambda *args, **kwargs: None)
+    monkeypatch.setattr(conversation_loop, "speak", lambda *args, **kwargs: None)
+
+    def fake_wait(func, model, user_text, **kwargs):
+        wait_kwargs.update(kwargs)
+        return {"reply": "You are welcome.", "continue_listening": False}
+
+    monkeypatch.setattr(conversation_loop, "wait_for_result_or_wake_word", fake_wait)
+
+    assert (
+        conversation_loop.ask_and_speak(
+            "thank you",
+            object(),
+            announce_waiting=False,
+        )
+        is False
+    )
+    assert wait_kwargs["on_wait_start"] is None
+    assert wait_kwargs["on_still_waiting"] is None
+
+
 def test_tts_creates_parent_and_invokes_configured_piper(tmp_path, monkeypatch):
     captured = {}
 
@@ -414,7 +438,7 @@ def test_conversation_happy_path_without_hardware(monkeypatch):
     monkeypatch.setattr(
         conversation_loop,
         "ask_and_speak",
-        lambda text, model: calls.append(text) or False,
+        lambda text, model, **kwargs: calls.append(text) or False,
     )
     monkeypatch.setattr(
         conversation_loop,
@@ -454,8 +478,12 @@ def test_command_server_instruction_acts_as_wake_and_listens_for_command(monkeyp
     monkeypatch.setattr(
         conversation_loop,
         "process_command_loop",
-        lambda model, command, served_turn=False, wake_context_prompt=None: events.append(
-            ("process", command, served_turn, wake_context_prompt)
+        lambda model,
+        command,
+        served_turn=False,
+        wake_context_prompt=None,
+        quiet_first_response=False: events.append(
+            ("process", command, served_turn, wake_context_prompt, quiet_first_response)
         ),
     )
 
@@ -464,7 +492,7 @@ def test_command_server_instruction_acts_as_wake_and_listens_for_command(monkeyp
     assert events == [
         ("clear",),
         ("speak", "Welcome home.", "command_server"),
-        ("process", "turn on the bedroom light", False, None),
+        ("process", "turn on the bedroom light", False, None, True),
     ]
 
 

@@ -167,7 +167,7 @@ def get_followup_until(model, seconds: int) -> str:
     return ""
 
 
-def ask_and_speak(user_text: str, model) -> bool:
+def ask_and_speak(user_text: str, model, *, announce_waiting: bool = True) -> bool:
     for attempt in range(API_RETRY_COUNT):
         try:
             started_at = time.time()
@@ -181,15 +181,13 @@ def ask_and_speak(user_text: str, model) -> bool:
                 model,
                 user_text,
                 on_wait_start=(
-                    lambda: speak(random.choice(CHECKING_REPLIES), model=model, kind="checking")
-                    if attempt == 0
-                    else None
+                    (lambda: speak(random.choice(CHECKING_REPLIES), model=model, kind="checking"))
+                    if announce_waiting and attempt == 0 else None
                 ),
                 on_wait_start_delay=CHECKING_REPLY_DELAY_SECONDS,
                 on_still_waiting=(
-                    lambda: speak(random.choice(STILL_CHECKING_REPLIES), model=model, kind="still_checking")
-                    if attempt == 0
-                    else None
+                    (lambda: speak(random.choice(STILL_CHECKING_REPLIES), model=model, kind="still_checking"))
+                    if announce_waiting and attempt == 0 else None
                 ),
                 on_still_waiting_delay=STILL_CHECKING_REPLY_DELAY_SECONDS,
             )
@@ -262,7 +260,13 @@ def handle_local_command(payload: dict) -> dict:
     return {"ok": False, "error": f"unknown command: {command}"}
 
 
-def process_command_loop(model, command: str, served_turn: bool = False, wake_context_prompt: str | None = None):
+def process_command_loop(
+    model,
+    command: str,
+    served_turn: bool = False,
+    wake_context_prompt: str | None = None,
+    quiet_first_response: bool = False,
+):
     while command:
         if is_wake_only_command(command):
             voice_event("wake_only_command", kind="initial")
@@ -293,11 +297,17 @@ def process_command_loop(model, command: str, served_turn: bool = False, wake_co
         wake_context_prompt = None
 
         try:
-            should_continue = ask_and_speak(command_for_api, model)
+            should_continue = ask_and_speak(
+                command_for_api,
+                model,
+                announce_waiting=not quiet_first_response,
+            )
             maybe_refresh_context_bucket_async()
         except WakeWordInterrupted:
             command = get_command_with_retries(model)
             continue
+
+        quiet_first_response = False
 
         if should_continue is None:
             return
@@ -419,7 +429,13 @@ def handle_command_server_instruction(model, payload: dict):
         voice_event("command_listen_finished", result="no_command_after_command_server")
         return
 
-    process_command_loop(model, command, served_turn=False, wake_context_prompt=None)
+    process_command_loop(
+        model,
+        command,
+        served_turn=False,
+        wake_context_prompt=None,
+        quiet_first_response=True,
+    )
 
 
 def run_assistant():
