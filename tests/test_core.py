@@ -269,6 +269,28 @@ def test_volume_configuration_can_be_disabled(monkeypatch):
     play_audio.ensure_speaker_volume()
 
 
+def test_command_server_chime_uses_short_rising_tone(monkeypatch):
+    captured = {}
+
+    monkeypatch.setattr(
+        play_audio,
+        "write_tone",
+        lambda path, notes, volume=0.35: captured.update(
+            path=path,
+            notes=notes,
+            volume=volume,
+        ),
+    )
+    monkeypatch.setattr(play_audio, "play_wav_file", lambda path: captured.update(played=path))
+
+    play_audio.play_command_server_chime()
+
+    assert captured["path"] == play_audio.COMMAND_SERVER_CHIME_PATH
+    assert captured["played"] == play_audio.COMMAND_SERVER_CHIME_PATH
+    assert captured["volume"] == 0.18
+    assert captured["notes"][-1] == (2093.0, 0.24)
+
+
 def test_alsa_playback_stringifies_numeric_device(monkeypatch):
     captured = {}
 
@@ -472,6 +494,11 @@ def test_command_server_instruction_acts_as_wake_and_listens_for_command(monkeyp
     )
     monkeypatch.setattr(
         conversation_loop,
+        "play_command_server_preamble",
+        lambda: events.append(("chime",)),
+    )
+    monkeypatch.setattr(
+        conversation_loop,
         "get_command_with_retries",
         lambda model: "turn on the bedroom light",
     )
@@ -491,6 +518,7 @@ def test_command_server_instruction_acts_as_wake_and_listens_for_command(monkeyp
 
     assert events == [
         ("clear",),
+        ("chime",),
         ("speak", "Welcome home.", "command_server"),
         ("process", "turn on the bedroom light", False, None, True),
     ]
@@ -507,6 +535,11 @@ def test_command_server_instruction_command_timeout_is_silent(monkeypatch):
     )
     monkeypatch.setattr(
         conversation_loop,
+        "play_command_server_preamble",
+        lambda: events.append(("chime",)),
+    )
+    monkeypatch.setattr(
+        conversation_loop,
         "get_command_with_retries",
         lambda model: "",
     )
@@ -520,5 +553,6 @@ def test_command_server_instruction_command_timeout_is_silent(monkeypatch):
 
     assert events == [
         ("clear",),
+        ("chime",),
         ("speak", "Welcome home.", "command_server"),
     ]

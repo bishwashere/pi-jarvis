@@ -38,7 +38,12 @@ from listen_to_mic import (
     open_microphone_stream,
     reset_audio_device_selection,
 )
-from play_audio import play_command_captured_tone, play_online_tone, play_wav_file
+from play_audio import (
+    play_command_captured_tone,
+    play_command_server_chime,
+    play_online_tone,
+    play_wav_file,
+)
 from speech_to_text import WAKE_ONLY_COMMAND, listen_for_command
 from text_to_speech import synthesize_to_wav
 from voice_log import voice_event
@@ -116,6 +121,14 @@ def confirm_command_captured():
         play_command_captured_tone()
     except Exception as e:
         print("Command captured tone failed:", e, flush=True)
+
+
+def play_command_server_preamble():
+    try:
+        voice_event("command_server_chime")
+        play_command_server_chime()
+    except Exception as e:
+        print("Command server chime failed:", e, flush=True)
 
 
 def get_command_with_retries(model) -> str:
@@ -417,6 +430,7 @@ def handle_command_server_instruction(model, payload: dict):
 
     clear_audio_queue()
     voice_event("command_server_instruction_started", text=text)
+    play_command_server_preamble()
     speak(text, model=model, kind="command_server")
 
     try:
