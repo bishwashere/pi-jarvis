@@ -11,7 +11,7 @@ import speech_to_text
 import text_to_speech
 import simulate_conversation
 from daily_context import contextualize_affirmative_command, parse_suggestions
-from detect_wake_word import get_wake_match
+from detect_wake_word import get_wake_match, remove_phrase
 from call_agent_api import parse_agent_reply
 from speech_to_text import (
     QUICK_COMMANDS,
@@ -48,6 +48,8 @@ def test_wake_word_and_text_cleanup():
         "score": 1.0,
     }
     assert remove_wake_words("hey jarvis tell me the time") == "tell me the time"
+    assert remove_phrase("jarvis stand down", "jarvis") == "stand down"
+    assert remove_phrase("hello jarvis stand down", "hello jarvis") == "stand down"
     assert clean_command_transcript("Hi.") == WAKE_ONLY_COMMAND
     assert clean_command_transcript("hello computer?") == WAKE_ONLY_COMMAND
     assert clean_command_transcript("Jarvis, what time is it?") == "what time is it"
@@ -236,6 +238,46 @@ def test_ask_and_speak_can_suppress_waiting_announcements(monkeypatch):
     )
     assert wait_kwargs["on_wait_start"] is None
     assert wait_kwargs["on_still_waiting"] is None
+
+
+def test_stand_down_command_starts_one_hour_quiet_mode(monkeypatch):
+    spoken = []
+    events = []
+
+    monkeypatch.setattr(conversation_loop.time, "time", lambda: 1000.0)
+    monkeypatch.setattr(conversation_loop.time, "localtime", lambda timestamp=None: object())
+    monkeypatch.setattr(
+        conversation_loop.time,
+        "strftime",
+        lambda fmt, value: "2026-09-28T14:00:00",
+    )
+    monkeypatch.setattr(conversation_loop, "_stand_down_until", 0.0)
+    monkeypatch.setattr(conversation_loop, "STAND_DOWN_SECONDS", 3600)
+    monkeypatch.setattr(conversation_loop, "voice_event", lambda *args, **kwargs: events.append((args, kwargs)))
+    monkeypatch.setattr(conversation_loop, "confirm_command_captured", lambda: None)
+    monkeypatch.setattr(
+        conversation_loop,
+        "speak",
+        lambda text, model=None, kind="speech": spoken.append((text, kind)),
+    )
+    monkeypatch.setattr(
+        conversation_loop,
+        "ask_and_speak",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("stand down should not call Passer")
+        ),
+    )
+
+    assert conversation_loop.is_stand_down_command("jarvis stand down") is True
+    assert conversation_loop.is_stand_down_command("stand down") is True
+
+    conversation_loop.process_command_loop(object(), "stand down")
+
+    assert conversation_loop.stand_down_remaining(now=1000.0) == 3600.0
+    assert conversation_loop.is_standing_down(now=4599.0) is True
+    assert conversation_loop.is_standing_down(now=4600.0) is False
+    assert spoken == [("Standing down for one hour.", "stand_down")]
+    assert any(args == ("stand_down_started",) for args, kwargs in events)
 
 
 def test_tts_creates_parent_and_invokes_configured_piper(tmp_path, monkeypatch):

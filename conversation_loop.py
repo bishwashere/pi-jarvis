@@ -16,6 +16,7 @@ from config import (
     GENERIC_ERROR_REPLY,
     LENIENT_WAKE_LEVEL,
     MAX_COMMAND_SECONDS,
+    STAND_DOWN_SECONDS,
     STANDBY_REPLIES,
     STILL_CHECKING_REPLIES,
     STILL_CHECKING_REPLY_DELAY_SECONDS,
@@ -72,9 +73,17 @@ END_SESSION_PHRASES = {
     "stop jarvis",
 }
 
+STAND_DOWN_PHRASES = {
+    "jarvis stand down",
+    "stand down",
+    "stand down for an hour",
+    "stand down for one hour",
+}
+
 
 _speak_lock = threading.Lock()
 _local_command_queue = queue.Queue()
+_stand_down_until = 0.0
 
 
 def normalize_command(text: str) -> str:
@@ -89,6 +98,36 @@ def is_end_session_command(text: str) -> bool:
 
 def is_wake_only_command(text: str) -> bool:
     return text == WAKE_ONLY_COMMAND
+
+
+def is_stand_down_command(text: str) -> bool:
+    return normalize_command(text) in STAND_DOWN_PHRASES
+
+
+def stand_down_remaining(now: float | None = None) -> float:
+    current_time = time.time() if now is None else now
+    return max(0.0, _stand_down_until - current_time)
+
+
+def is_standing_down(now: float | None = None) -> bool:
+    return stand_down_remaining(now) > 0
+
+
+def start_stand_down(seconds: int = STAND_DOWN_SECONDS) -> float:
+    global _stand_down_until
+    _stand_down_until = time.time() + seconds
+    voice_event(
+        "stand_down_started",
+        seconds=seconds,
+        until=time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(_stand_down_until)),
+    )
+    return _stand_down_until
+
+
+def handle_stand_down_command(model) -> bool:
+    start_stand_down()
+    speak("Standing down for one hour.", model=model, kind="stand_down")
+    return False
 
 
 def end_pasture_session_quietly():
@@ -299,6 +338,12 @@ def process_command_loop(
             confirm_standby_if_served(served_turn, model)
             return
 
+        if is_stand_down_command(command):
+            confirm_command_captured()
+            voice_event("stand_down_command", kind="initial", text=command)
+            handle_stand_down_command(model)
+            return
+
         confirm_command_captured()
         voice_event("command_accepted", kind="initial", text=command)
         print("Command:", command)
@@ -372,6 +417,13 @@ def process_command_loop(
                 wake_context_prompt = speak_wake_reply(model=model)
                 command = get_command_with_retries(model)
                 break
+
+            if is_stand_down_command(followup):
+                confirm_command_captured()
+                voice_event("stand_down_command", kind="followup", text=followup)
+                handle_stand_down_command(model)
+                command = ""
+                return
 
             confirm_command_captured()
             voice_event("command_accepted", kind="followup", text=followup)
@@ -488,6 +540,11 @@ def run_assistant():
             wake_monitor.reset()
             continue
 
+        remaining_stand_down = stand_down_remaining()
+        if remaining_stand_down > 0:
+            time.sleep(min(1.0, remaining_stand_down))
+            continue
+
         voice_event("wake_listen_started")
         print("Waiting for wake word...", flush=True)
         pending_command = None
@@ -518,7 +575,16 @@ def run_assistant():
         if pending_command:
             handle_command_server_instruction(model, pending_command)
         elif wake_heard:
-            handle_conversation(model)
+            command_after_wake = wake_monitor.last_command_after_wake
+            if command_after_wake:
+                process_command_loop(
+                    model,
+                    command_after_wake,
+                    served_turn=False,
+                    wake_context_prompt=None,
+                )
+            else:
+                handle_conversation(model)
 
         clear_audio_queue()
         wake_monitor.reset()

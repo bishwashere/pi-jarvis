@@ -47,6 +47,23 @@ def contains_phrase(heard: str, phrase: str) -> bool:
     return False
 
 
+def remove_phrase(heard: str, phrase: str) -> str:
+    heard_words = heard.split()
+    phrase_words = phrase.split()
+    if not phrase_words or len(phrase_words) > len(heard_words):
+        return heard
+
+    for start in range(len(heard_words) - len(phrase_words) + 1):
+        if heard_words[start : start + len(phrase_words)] == phrase_words:
+            remaining = (
+                heard_words[:start]
+                + heard_words[start + len(phrase_words) :]
+            )
+            return " ".join(remaining)
+
+    return heard
+
+
 def wake_similarity(candidate: str, wake: str) -> float:
     if not candidate or candidate[0] != wake[0]:
         return 0.0
@@ -150,12 +167,14 @@ class WakeWordMonitor:
         self.recognizer = KaldiRecognizer(model, SAMPLE_RATE)
         self.last_trigger_time = 0
         self.last_partial = ""
+        self.last_command_after_wake = ""
 
     def reset(self):
         from vosk import KaldiRecognizer
 
         self.recognizer = KaldiRecognizer(self.model, SAMPLE_RATE)
         self.last_partial = ""
+        self.last_command_after_wake = ""
 
     def log_wake_match(self, match: dict, source: str):
         voice_event(
@@ -207,6 +226,17 @@ class WakeWordMonitor:
         match = get_wake_match(heard)
         if not match["triggered"]:
             return False
+
+        self.last_command_after_wake = ""
+        if match.get("mode") == "strict":
+            command_after_wake = remove_phrase(heard, match["matched"])
+            if command_after_wake:
+                self.last_command_after_wake = command_after_wake
+                voice_event(
+                    "wake_included_command",
+                    heard=heard,
+                    command=command_after_wake,
+                )
 
         self.log_wake_match(match, source="final")
 

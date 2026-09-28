@@ -230,6 +230,9 @@ FOLLOWUP_SECONDS = 20
 # Prevent duplicate wake triggers.
 DUPLICATE_WAKE_SECONDS = 3
 
+# Local voice control: how long "Jarvis stand down" disables wake listening.
+STAND_DOWN_SECONDS = int(os.environ.get("JARVIS_STAND_DOWN_SECONDS", "3600"))
+
 # If the Pi fails to capture a command after wake, return to wake mode quietly.
 COMMAND_RETRY_COUNT = 1
 
