@@ -228,7 +228,7 @@ using environment variables.
 - Speaker playback device: `plughw:2,0` on Linux and the system default elsewhere
 - Linux ALSA volume card/control: card `2`, control `PCM`, volume `85%`
 - Wake words/phrases: `hello jarvis`, `hey jarvis`, `hello computer`, `hey computer`, `jarvis`, `computer`, `hello`
-- Lenient wake level: `70`, where `0` only wakes on exact configured phrases and `100` wakes on any recognized speech.
+- Lenient wake level: `40`, where `0` only wakes on exact configured phrases and `100` wakes on any recognized speech.
 - Command speech-to-text engine: `whisper`; Vosk is still used for wake detection.
 - Whisper model: `../whisper.cpp/models/ggml-tiny.en.bin`, relative to the checkout
 - Wake response: `Hi. How can I help?`
@@ -343,7 +343,7 @@ Expected startup output includes:
 Loading Vosk model...
 Jarvis voice loop running.
 Say one of these to wake: hello jarvis, hey jarvis, hello computer, hey computer, jarvis, computer, hello
-Lenient wake level: 70
+Lenient wake level: 40
 Press Ctrl+C to stop.
 Waiting for wake word...
 ```

@@ -177,7 +177,7 @@ WAKE_WORDS = [
 # 0 = only wake on exact phrases in WAKE_WORDS.
 # 100 = wake on any recognized speech.
 # Values in between lower the similarity needed to treat speech as a wake phrase.
-LENIENT_WAKE_LEVEL = 70
+LENIENT_WAKE_LEVEL = 40
 
 
 # ---------- Local AI API ----------
