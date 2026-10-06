@@ -20,6 +20,7 @@ from config import (
     STANDBY_REPLIES,
     STILL_CHECKING_REPLIES,
     STILL_CHECKING_REPLY_DELAY_SECONDS,
+    UNCLEAR_FOLLOWUP_REPLIES,
     VOSK_MODEL_PATH,
     WAKE_REPLIES,
     WAKE_WORDS,
@@ -198,12 +199,26 @@ def get_command_with_retries(model) -> str:
 
 def get_followup_until(model, seconds: int) -> str:
     deadline = time.time() + seconds
+    clarified_unclear_audio = False
+
+    def clarify_unclear_audio():
+        nonlocal clarified_unclear_audio
+        if clarified_unclear_audio:
+            return
+
+        clarified_unclear_audio = True
+        voice_event("followup_unclear_audio")
+        speak(random.choice(UNCLEAR_FOLLOWUP_REPLIES), model=model, kind="clarification")
 
     while time.time() < deadline:
         remaining = max(1, int(deadline - time.time()))
         voice_event("command_listen_attempt", kind="followup", seconds=remaining)
         try:
-            followup = listen_for_command(model, seconds=remaining)
+            followup = listen_for_command(
+                model,
+                seconds=remaining,
+                on_unclear_audio=clarify_unclear_audio,
+            )
         except WakeWordInterrupted:
             raise
 

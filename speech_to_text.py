@@ -435,7 +435,11 @@ def transcribe_audio_file(audio_path: str, model=None, *, clean: bool = True) ->
     return transcribe_with_vosk_file(audio_path, model=model, clean=clean)
 
 
-def listen_for_command_with_whisper(model, seconds: int) -> str:
+def listen_for_command_with_whisper(
+    model,
+    seconds: int,
+    on_unclear_audio=None,
+) -> str:
     voice_event("command_listen_started", engine="whisper", seconds=seconds)
     print(f"Listening for command with Whisper for up to {seconds} seconds...")
     deadline = time.time() + seconds
@@ -454,6 +458,8 @@ def listen_for_command_with_whisper(model, seconds: int) -> str:
             return command
 
         if time.time() < deadline:
+            if on_unclear_audio is not None:
+                on_unclear_audio()
             voice_event("command_listen_continued", reason="ignored_or_empty_transcript")
             print(
                 "No command in captured audio; still listening.",
@@ -463,9 +469,18 @@ def listen_for_command_with_whisper(model, seconds: int) -> str:
     return ""
 
 
-def listen_for_command(model, seconds: int = MAX_COMMAND_SECONDS, allow_wake_interrupt: bool = True) -> str:
+def listen_for_command(
+    model,
+    seconds: int = MAX_COMMAND_SECONDS,
+    allow_wake_interrupt: bool = True,
+    on_unclear_audio=None,
+) -> str:
     if COMMAND_STT_ENGINE.lower() == "whisper":
-        return listen_for_command_with_whisper(model, seconds)
+        return listen_for_command_with_whisper(
+            model,
+            seconds,
+            on_unclear_audio=on_unclear_audio,
+        )
 
     from vosk import KaldiRecognizer
 

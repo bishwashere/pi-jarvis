@@ -507,12 +507,43 @@ def test_conversation_happy_path_without_hardware(monkeypatch):
     monkeypatch.setattr(
         conversation_loop,
         "listen_for_command",
-        lambda model, seconds: "",
+        lambda model, seconds, **kwargs: "",
     )
 
     conversation_loop.handle_conversation(object())
 
     assert calls == ["what time is it"]
+
+
+def test_followup_unclear_audio_gets_one_clarification(monkeypatch):
+    spoken = []
+    events = []
+
+    monkeypatch.setattr(conversation_loop, "voice_event", lambda *args, **kwargs: events.append((args, kwargs)))
+    monkeypatch.setattr(
+        conversation_loop,
+        "speak",
+        lambda text, model=None, kind="speech": spoken.append((text, kind)),
+    )
+
+    def fake_listen_for_command(model, seconds, on_unclear_audio=None, **kwargs):
+        assert on_unclear_audio is not None
+        on_unclear_audio()
+        on_unclear_audio()
+        return "will it rain tomorrow"
+
+    monkeypatch.setattr(conversation_loop, "listen_for_command", fake_listen_for_command)
+    monkeypatch.setattr(
+        conversation_loop.random,
+        "choice",
+        lambda choices: choices[0],
+    )
+
+    assert conversation_loop.get_followup_until(object(), 20) == "will it rain tomorrow"
+    assert spoken == [
+        ("I heard something, but I didn't catch the words.", "clarification")
+    ]
+    assert [args for args, kwargs in events].count(("followup_unclear_audio",)) == 1
 
 
 def test_local_command_is_queued_for_voice_loop():

@@ -288,6 +288,11 @@ STILL_CHECKING_REPLIES = [
     "Working on it.",
 ]
 STILL_CHECKING_REPLY_DELAY_SECONDS = 9.0
+UNCLEAR_FOLLOWUP_REPLIES = [
+    "I heard something, but I didn't catch the words.",
+    "Sorry, I didn't catch that.",
+    "I missed that. Could you say it again?",
+]
 STANDBY_REPLIES = [
     "Resting now.",
     "Talk to you later.",
