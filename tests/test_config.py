@@ -179,7 +179,7 @@ print(json.dumps({
     environment.update(
         {
             "PYTHONPATH": str(PROJECT_ROOT),
-            "JARVIS_PROJECT_DIR": "/home/jarvis/jarvis",
+            "JARVIS_PROJECT_DIR": "/home/<user>/jarvis",
         }
     )
 
@@ -193,10 +193,10 @@ print(json.dumps({
     )
 
     assert json.loads(result.stdout) == {
-        "vosk": "/home/jarvis/jarvis/runtime/assets/vosk-model-small-en-us-0.15",
-        "piper": "/home/jarvis/jarvis/runtime/assets/piper/en_US-amy-medium.onnx",
-        "whisper": "/home/jarvis/whisper.cpp/build/bin/whisper-cli",
-        "reply": "/home/jarvis/jarvis/logs/reply.wav",
+        "vosk": "/home/<user>/jarvis/runtime/assets/vosk-model-small-en-us-0.15",
+        "piper": "/home/<user>/jarvis/runtime/assets/piper/en_US-amy-medium.onnx",
+        "whisper": "/home/<user>/whisper.cpp/build/bin/whisper-cli",
+        "reply": "/home/<user>/jarvis/logs/reply.wav",
     }
 
 
