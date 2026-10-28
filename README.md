@@ -15,32 +15,62 @@ the platform's configured audio output.
 
 ## Hardware configurations and component responsibilities
 
-Echo is optional. Use a compatible microphone and speaker attached to the Pi,
-or a supported, modified Echo running satellite software. A stock Alexa device
-does not automatically provide the satellite connection.
+Pi Jarvis runs in one of two configurations, and configuration decides which
+one. If `JARVIS_HASSMIC_HOST` (one Echo) or `JARVIS_ECHO_DEVICES_PATH` (a
+registry of Echos) is set, the launcher starts the Echo controller
+(`hassmic_jarvis.py`) and the Echo flow below applies. If neither is set, the
+launcher starts the standard runtime (`jarvis_voice.py`) and the direct
+microphone flow applies. The two flows differ mainly in who detects the wake
+word and who processes the microphone audio.
 
-| Stage | Microphone and speaker attached to Pi | Echo satellite |
+### Configuration 1: microphone and speaker attached to the Pi
+
+**Person → microphone → Pi → Pasture (backend server) → Pi → speaker**
+
+| Stage | Component | Runs on |
 | --- | --- | --- |
-| Capture and microphone processing | Microphone; cleanup depends on hardware/software | Echo microphones and audio front end |
-| Wake detection | Vosk on the Pi | microWakeWord on Echo; Pi waits for its wake signal |
-| Deliver command audio | Local Pi audio input | Echo streams PCM to Pi over Wyoming |
-| Speech/silence timing and follow-ups | Pi Jarvis | Pi Jarvis |
-| Command speech recognition | Whisper / whisper.cpp on Pi | Whisper / whisper.cpp on Pi |
-| Understand requests, use tools, generate answers | Pasture (backend server) | Pasture (backend server) |
-| Generate speech | Piper on Pi | Piper on Pi |
-| Play speech | Connected speaker | Pi sends audio to Echo speaker |
+| Capture voice | Compatible microphone | Connected to the Pi |
+| Audio cleanup | Depends on microphone hardware and configured software | Microphone or Pi |
+| Detect wake phrase | Vosk | Pi |
+| Manage listening and silence | Pi Jarvis | Pi |
+| Convert command speech into text | Whisper / whisper.cpp | Pi |
+| Understand request, perform actions, generate answer | Pasture agent | Pasture (backend server) |
+| Convert answer into speech | Piper | Pi |
+| Play answer | Compatible speaker | Connected to the Pi |
 
-The direct-microphone production path records the command before Whisper
-transcription. Incremental transcription and input/response streaming are
-implemented in the Echo controller path. Local development profiles can use
-Vosk for command transcription instead of Whisper.
+The microphone and speaker can be separate devices. Their connections must be
+supported by the Pi's audio configuration. This path records the full command
+before Whisper transcribes it.
 
-Echo support adds a Wyoming controller, satellite patches for follow-up and
-playback coordination, device routing, reconnect handling, and per-device logs.
-Prepare each Echo and register its identity before use; normal reconnects are
-automatic. Home Assistant can also submit event-driven announcements directly
-to Pi Jarvis for Piper synthesis and playback. The Mac is a development and
-maintenance machine, outside the normal voice path.
+### Configuration 2: Echo as microphone and speaker
+
+**Person → Echo → Pi → Pasture (backend server) → Pi → Echo**
+
+| Stage | Component | Runs on |
+| --- | --- | --- |
+| Capture voice and process microphone audio | Echo microphones and audio front end | Echo |
+| Detect wake phrase | microWakeWord with our configured models | Echo |
+| Stream microphone audio | Echo satellite software over Wyoming | Echo to Pi |
+| Manage listening and silence | Pi Jarvis | Pi |
+| Convert command speech into text | Whisper / whisper.cpp | Pi |
+| Understand request, perform actions, generate answer | Pasture agent | Pasture (backend server) |
+| Convert answer into speech | Piper | Pi |
+| Send and play answer | Pi audio transport and Echo speaker | Pi to Echo |
+
+This configuration needs a modified Echo running satellite software; a stock
+Alexa device does not automatically provide this connection. Prepare each Echo
+and register its identity before use; once registered, Pi Jarvis handles
+connection and reconnection automatically. Echo support adds the Wyoming
+controller in Pi Jarvis, satellite patches for follow-up listening and playback
+coordination, device routing for multiple Echos, and per-device logs.
+Incremental transcription and input and response streaming are implemented in
+this Echo controller path only; the direct microphone configuration does not
+stream the same way.
+
+Whisper, Piper, and Pasture keep the same responsibilities in both
+configurations. Home Assistant can also submit event-driven announcements
+directly to Pi Jarvis for Piper synthesis and playback. The Mac is a
+development and maintenance machine, outside the normal voice path.
 
 ## 1. Install
 
