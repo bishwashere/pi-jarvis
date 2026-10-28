@@ -93,7 +93,8 @@ development.
 - Do not pass `BatchMode=yes` for this project. It disables the required
   askpass/password flow and causes misleading `Permission denied` failures.
 - When checking the command-center receive API from the Mac/LAN, use the Pi's
-  LAN address: `http://192.168.1.85:8765/health`. SSH management still goes
+  configured LAN address: `http://<PI_LAN_IP>:8765/health`. Obtain that address
+  from local configuration; do not publish it. SSH management still goes
   through `./bin/pi-ssh`.
 
 ## Validation

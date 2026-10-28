@@ -44,6 +44,10 @@ maintenance machine, outside the normal voice path.
 
 ## 1. Install
 
+Read [SECURITY.md](SECURITY.md) for publication checks and network trust boundaries.
+Local environment files, hardware inventories, recordings, and backups stay out
+of Git. Copy the example inventories when configuring a new installation.
+
 ### 1.1 Python Environment (Raspberry Pi, Linux, Windows)
 
 The project uses `uv` and keeps its environment under `runtime/venv`. Python
@@ -271,7 +275,8 @@ using environment variables.
 - Wake response: `Hi. How can I help?`
 - Initial command listen window: `60` seconds, with an earlier stop after speech followed by a short silence.
 - Follow-up listen window after an answer: `4` seconds.
-- Agent API: `http://<PI_LAN_IP>:1235/v1/agents/jarvis`
+- Agent API: defaults to `http://127.0.0.1:1235/v1/agents/jarvis`; set
+  `JARVIS_API_BASE_URL` locally to reach Pasture (backend server) on another host.
 - Command center: `http://<PI_LAN_IP>:8765` on the deployed Jarvis Pi.
 - Vosk model: `runtime/assets/vosk-model-small-en-us-0.15`
 - Piper voice model: `runtime/assets/piper/en_US-amy-medium.onnx`
@@ -279,6 +284,11 @@ using environment variables.
 Common environment overrides:
 
 - `JARVIS_PROJECT_DIR`, `JARVIS_VENV_DIR`, `JARVIS_LOG_FILE`, `JARVIS_LOCK_FILE`
+- `JARVIS_COMMAND_SERVER_MAX_BODY_BYTES` (default 65536, maximum 1048576),
+  `JARVIS_COMMAND_SERVER_READ_TIMEOUT` (default 10 seconds, maximum 60), and
+  `JARVIS_COMMAND_SERVER_MAX_CONNECTIONS` (default 16, maximum 128) bound command
+  endpoint resource use. Requests need one valid `Content-Length`; chunked
+  request bodies are not supported by this endpoint.
 - `JARVIS_API_BASE_URL`, `JARVIS_API_URL`, `JARVIS_API_HEALTH_URL`, `JARVIS_API_MODEL`
 - `JARVIS_AUDIO_DEVICE`, `JARVIS_AUDIO_DEVICE_FALLBACKS`
 - `JARVIS_PLAYBACK_BACKEND` (`auto`, `alsa`, `sounddevice`, or `echomuse`), `JARVIS_PLAYBACK_DEVICE`

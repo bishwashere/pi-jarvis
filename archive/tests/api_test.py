@@ -1,6 +1,7 @@
+import os
 import requests
 
-API_URL = "http://192.168.1.82:1234/v1/chat/completions"
+API_URL = os.environ.get("JARVIS_API_URL", "http://127.0.0.1:1234/v1/chat/completions")
 MODEL = "api-assistant"
 
 response = requests.post(

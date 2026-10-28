@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+scanner="${GITLEAKS_BIN:-$root/runtime/cache/security-audit/tools/gitleaks}"
+if [[ ! -x "$scanner" || ! -x runtime/venv/bin/python ]]; then
+    echo 'Push blocked: install Gitleaks (or set GITLEAKS_BIN) and the runtime/venv environment.' >&2
+    exit 1
+fi
+while read -r local_ref local_oid remote_ref remote_oid; do
+    [[ "$local_oid" =~ ^0+$ ]] && continue
+    runtime/venv/bin/python scripts/check_public_files.py --ref "$local_oid"
+    "$scanner" git . --log-opts="$local_oid" --redact=100 --no-banner
+ done

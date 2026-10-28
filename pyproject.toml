@@ -5,6 +5,9 @@ description = "Portable Raspberry Pi voice assistant runtime"
 readme = "README.md"
 requires-python = ">=3.10,<3.15"
 dependencies = [
+    # Minimum patched TLS trust-store and HTTP streaming dependencies.
+    "certifi>=2026.10.19",
+    "urllib3>=2.8.0,<3",
     # Keep a manylinux2014 ARM64 wheel available for Python 3.10 Pi installs.
     # The complementary marker lets newer Pythons use current ONNX Runtime.
     "onnxruntime<1.17; python_version<'3.11'",

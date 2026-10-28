@@ -218,7 +218,7 @@ LENIENT_WAKE_LEVEL = max(0, min(100, int(os.environ.get("JARVIS_LENIENT_WAKE_LEV
 
 API_BASE_URL = os.environ.get(
     "JARVIS_API_BASE_URL",
-    "http://192.168.1.82:1235/v1/agents/jarvis",
+    "http://127.0.0.1:1235/v1/agents/jarvis",
 ).rstrip("/")
 API_URL = os.environ.get(
     "JARVIS_API_URL",
@@ -293,6 +293,15 @@ COMMAND_SERVER_HOST = os.environ.get(
     "JARVIS_COMMAND_SERVER_HOST",
     "0.0.0.0" if COMMAND_SERVER_TOKEN else "127.0.0.1",
 )
+COMMAND_SERVER_MAX_BODY_BYTES = int(os.environ.get("JARVIS_COMMAND_SERVER_MAX_BODY_BYTES", "65536"))
+COMMAND_SERVER_READ_TIMEOUT = float(os.environ.get("JARVIS_COMMAND_SERVER_READ_TIMEOUT", "10"))
+COMMAND_SERVER_MAX_CONNECTIONS = int(os.environ.get("JARVIS_COMMAND_SERVER_MAX_CONNECTIONS", "16"))
+if not 1 <= COMMAND_SERVER_MAX_BODY_BYTES <= 1048576:
+    raise ValueError("JARVIS_COMMAND_SERVER_MAX_BODY_BYTES must be between 1 and 1048576")
+if not 0 < COMMAND_SERVER_READ_TIMEOUT <= 60:
+    raise ValueError("JARVIS_COMMAND_SERVER_READ_TIMEOUT must be greater than 0 and at most 60")
+if not 1 <= COMMAND_SERVER_MAX_CONNECTIONS <= 128:
+    raise ValueError("JARVIS_COMMAND_SERVER_MAX_CONNECTIONS must be between 1 and 128")
 
 
 # ---------- Voice / TTS ----------
