@@ -1,3 +1,11 @@
+# Jarvis: a voice assistant that lives in my house
+
+Jarvis is a small voice assistant that runs on a Raspberry Pi at home. You say its name, ask a question or give a command out loud, and it answers in a natural voice. Speech is handled on the device itself as much as possible, and the request is then passed to an AI agent for the actual thinking.
+
+The front end is the Pi with its microphone and speaker: it listens for the wake word and transcribes speech locally. The back end is a small Python service that forwards commands to the agent and speaks the replies. The technical documentation follows below.
+
+---
+
 # Pi Jarvis
 
 Voice assistant runtime for Raspberry Pi, Linux, and 64-bit Windows. It listens
