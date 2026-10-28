@@ -42,6 +42,9 @@ automatic. Home Assistant can also submit event-driven announcements directly
 to Pi Jarvis for Piper synthesis and playback. The Mac is a development and
 maintenance machine, outside the normal voice path.
 
+For the Echo-specific firmware, rooting, satellite patches, wake-model deployment,
+and boot setup, see **[Echo Setup](Echo%20Setup/README.md)**.
+
 ## 1. Install
 
 Read [SECURITY.md](SECURITY.md) for publication checks and network trust boundaries.
@@ -657,14 +660,10 @@ Whisper, the existing Jarvis API/conversation ID, and the configured Piper voice
 Home Assistant is not required by this experimental path. It is separate from
 `jarvis_voice.py`. Setting `JARVIS_HASSMIC_HOST` selects it in the normal Pi launcher.
 
-The Echo must run compatible stock firmware and a **rebuilt** `hassmic` containing
-[patches/echo-dot-assist-jarvis-followup.patch](patches/echo-dot-assist-jarvis-followup.patch).
-Also apply [patches/echo-dot-assist-playback-drain.patch](patches/echo-dot-assist-playback-drain.patch) so playback completion waits for the mixer queue.
-The patches target upstream commit `a4fe0bdb6ac6914b1a02cda9f4a1a4f4ace94750`.
-It adds a capability flag and a playback-end request to restart listening. The
-unmodified signed upstream binary does **not** contain this patch. The connector
-rejects that binary rather than silently dropping follow-ups. Set the Echo to
-Wyoming mode with local wake detection; the initial stock wake may be Alexa.
+The Echo must already run the supported firmware and a rebuilt satellite with
+our follow-up, playback-drain, and model-status patches. Device preparation and
+patch details live in [Echo Setup](Echo%20Setup/README.md); the controller rejects
+a satellite that lacks the required follow-up capability.
 
 After firmware compatibility, backup/recovery, patch build and device deployment
 are completed, run on Linux/Pi:
@@ -732,17 +731,12 @@ the receive API stays available. Queued announcements survive reconnects, but
 not process restarts; an announcement whose playback fails is logged and is not
 automatically replayed because it may already have been heard.
 
-The E12 trial migrated one Dot 2 and completed three-turn acoustic tests with
-Alexa and Hey Jarvis; occasional transcription errors remain. The Echo now has a persistent startup service: on power-up it runs the custom
-satellite and joins its saved Wi-Fi. The Pi controller uses TCP keepalive
-(15-second idle, 5-second interval, three probes on Linux) to detect power loss
-and reconnect. Use a suitable wall adapter and remain within Wi-Fi coverage.
-Interruption during agent work and slow-response recovery are not yet validated.
-Wyoming is unencrypted: use only
-a trusted LAN. Do not run both controllers against the same microphone.
-See [E12-ECHO-DOT-ASSIST.md](E12-ECHO-DOT-ASSIST.md) for the observed firmware
-migration evidence, trial observations, and remaining limitations.
-
+The controller uses TCP keepalive (15-second idle, 5-second interval, three
+probes on Linux) to detect a lost Echo connection and reconnect. Device boot
+behavior and hardware verification are documented in
+[Echo Setup](Echo%20Setup/README.md). Interruption during agent work and
+slow-response recovery are not yet validated. Wyoming is unencrypted: use a
+trusted LAN. Do not run both controllers against the same microphone.
 
 Pi restart/logging: the launchers use `flock -F` so the Python runtime itself
 holds the single-instance lock. `jarvis stop` handles both legacy and satellite
@@ -750,16 +744,6 @@ processes. On a new start, the previous log is retained under `logs/archive/`;
 `jarvis logs` follows the current log across restarts. A failed start returns a
 nonzero exit code and prints its captured startup output. `jarvis status` also
 returns nonzero when stopped.
-
-Current wake-word trial (E15): the Echo runs **Hey Jarvis** plus **Computer**
-locally in microWakeWord's two slots. Hey Jarvis is the published ESPHome v2
-model (Kevin Ahrendt, cutoff 0.97); Computer is the community v2 model from
-[JohnnyPrimus/Custom_V2_MicroWakeWords](https://github.com/JohnnyPrimus/Custom_V2_MicroWakeWords/blob/main/models/computer/computer.json)
-(Leland Olney, cutoff 0.66). These are pretrained detectors, not personal voice
-enrollment. Alexa is not enabled. The second model was initially added to the temporary satellite. The later
-personalized models and persistent installation supersede this E15 configuration. Speaker playback tests send
-real audio through the P10S and do not send a programmatic wake trigger. Compare
-live-voice and speaker tests at the same physical placement before tuning.
 
 ### Primary-user voice setup (collection stage)
 
