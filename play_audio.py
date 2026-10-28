@@ -24,6 +24,7 @@ from config import (
     CONFIGURE_VOLUME,
     PLAYBACK_BACKEND,
     PLAYBACK_DEVICE,
+    SPEAKER_VOLUME_OVERRIDES,
     VOLUME_CARD,
     VOLUME_CONTROL,
     VOLUME_LEVEL,
@@ -31,6 +32,7 @@ from config import (
 from detect_wake_word import WakeWordMonitor
 from interruptions import WakeWordInterrupted
 from listen_to_mic import audio_queue
+from speaker_profiles import connected_profiles
 
 
 ONLINE_TONE_PATH = "/tmp/jarvis-online.wav"
@@ -52,12 +54,20 @@ def stop_process(process):
         process.wait()
 
 
-def ensure_speaker_volume():
+def ensure_speaker_volume(profile=None):
     if not CONFIGURE_VOLUME:
         return
 
+    volume = {"card": VOLUME_CARD, "control": VOLUME_CONTROL, "level": VOLUME_LEVEL}
+    if profile is not None:
+        volume.update(
+            card=profile["card"],
+            control=profile["volume_control"],
+            level=profile["volume_level"],
+        )
+        volume.update(SPEAKER_VOLUME_OVERRIDES)
     subprocess.run(
-        ["amixer", "-c", VOLUME_CARD, "sset", VOLUME_CONTROL, VOLUME_LEVEL],
+        ["amixer", "-c", volume["card"], "sset", volume["control"], volume["level"]],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
@@ -69,9 +79,9 @@ def resolve_playback_backend() -> str:
     backend = PLAYBACK_BACKEND.strip().lower()
     if backend == "auto":
         return "alsa" if sys.platform.startswith("linux") else "sounddevice"
-    if backend not in {"alsa", "sounddevice"}:
+    if backend not in {"alsa", "sounddevice", "echomuse"}:
         raise ValueError(
-            "JARVIS_PLAYBACK_BACKEND must be 'auto', 'alsa', or 'sounddevice'"
+            "JARVIS_PLAYBACK_BACKEND must be 'auto', 'alsa', 'sounddevice', or 'echomuse'"
         )
     return backend
 
@@ -161,28 +171,47 @@ def alsa_devices():
 
 
 def play_wav_with_alsa(path: str, model=None):
-    ensure_speaker_volume()
-    devices = alsa_devices()
+    use_profiles = str(PLAYBACK_DEVICE).strip().lower() == "profiles"
+    if use_profiles:
+        profiles = connected_profiles()
+        targets = {}
+        for profile in profiles:
+            targets.setdefault(profile["playback_device"], profile)
+        for device in PLAYBACK_FALLBACK_DEVICES:
+            targets.setdefault(str(device), None)
+    else:
+        ensure_speaker_volume()
+        targets = dict.fromkeys(alsa_devices())
+    devices = list(targets)
 
     for index, device in enumerate(devices):
-        aplay = subprocess.Popen(
-            [
-                "aplay",
-                "-D",
-                device,
-                path,
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
+        profile = targets[device]
+        bluetooth = profile is not None and profile.get("backend") == "bluetooth"
+        if profile is not None:
+            print(f"Trying speaker profile: {profile['name']} ({device})", flush=True)
+            if not bluetooth:
+                ensure_speaker_volume(profile)
+        command = (
+            ["paplay", f"--device={device}", path]
+            if bluetooth else ["aplay", "-D", device, path]
         )
+        try:
+            aplay = subprocess.Popen(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except OSError as error:
+            print(f"Playback unavailable on {device}: {error}", flush=True)
+            continue
 
         if model is None:
             _, stderr = aplay.communicate()
             if aplay.returncode == 0:
                 return
 
-            print(f"aplay error on {device}:", stderr.strip())
+            print(f"{command[0]} error on {device}:", stderr.strip())
             if index < len(devices) - 1:
                 continue
 
@@ -207,7 +236,7 @@ def play_wav_with_alsa(path: str, model=None):
         if aplay.returncode == 0:
             return
 
-        print(f"aplay error on {device}:", stderr.strip())
+        print(f"{command[0]} error on {device}:", stderr.strip())
 
 
 def play_wav_with_sounddevice(path: str, model=None):
@@ -253,6 +282,25 @@ def play_wav_with_sounddevice(path: str, model=None):
 
 def play_wav_file(path: str, model=None):
     backend = resolve_playback_backend()
+    if backend == "echomuse":
+        from echo_audio import get_echo
+
+        monitor = WakeWordMonitor(model) if model is not None else None
+
+        def interrupted():
+            if monitor is None:
+                return False
+            while True:
+                try:
+                    data = audio_queue.get_nowait()
+                except queue.Empty:
+                    return False
+                if monitor.accept_audio(data):
+                    return True
+
+        if get_echo().play(path, interrupted=interrupted):
+            raise WakeWordInterrupted()
+        return
     if backend == "alsa":
         return play_wav_with_alsa(path, model=model)
     return play_wav_with_sounddevice(path, model=model)

@@ -5,16 +5,18 @@ PROJECT_DIR="${JARVIS_PROJECT_DIR:-/home/jarvis/jarvis}"
 RUNNER="$PROJECT_DIR/run_jarvis.sh"
 LOG_FILE="$PROJECT_DIR/logs/jarvis_voice.log"
 PROCESS_PATTERN="$PROJECT_DIR/jarvis_voice.py"
-LOCK_PATTERN="flock -n /tmp/jarvis-voice.lock"
+LOCK_PATTERN="flock (-F )?-n /tmp/jarvis-voice.lock"
 
 usage() {
   echo "Usage: jarvis {start|stop|restart|status|logs}"
+  echo "       jarvis logs [LINES] | jarvis logs DEVICE_ID [LINES]"
 }
 
 find_pids() {
   {
     pgrep -f "$PROCESS_PATTERN" || true
-    pgrep -f "$LOCK_PATTERN" || true
+    pgrep -f "$PROJECT_DIR/hassmic_jarvis.py" || true
+    pgrep -f "$LOCK_PATTERN .*$PROJECT_DIR/" || true
   } | sort -u
 }
 
@@ -28,6 +30,7 @@ status() {
   fi
 
   echo "Jarvis is stopped."
+  return 1
 }
 
 start() {
@@ -45,9 +48,19 @@ start() {
   fi
 
   mkdir -p "$PROJECT_DIR/logs"
-  nohup "$RUNNER" >/dev/null 2>&1 &
+  if [ -s "$LOG_FILE" ]; then
+    mkdir -p "$PROJECT_DIR/logs/archive"
+    mv "$LOG_FILE" "$PROJECT_DIR/logs/archive/jarvis_voice.$(date +%Y%m%d-%H%M%S).$$.log"
+  fi
+  touch "$LOG_FILE"
+  # Do not let the long-running assistant inherit the management lock.
+  nohup "$RUNNER" 9>&- >>"$LOG_FILE" 2>&1 < /dev/null &
   sleep 1
-  status
+  if ! status; then
+    echo "Jarvis failed to start. Latest output:"
+    tail -n 20 "$LOG_FILE"
+    return 1
+  fi
 }
 
 stop() {
@@ -60,7 +73,11 @@ stop() {
 
   echo "Stopping Jarvis..."
   kill $pids 2>/dev/null || true
-  sleep 1
+  for attempt in {1..40}; do
+    sleep .25
+    pids="$(find_pids)"
+    [ -z "$pids" ] && break
+  done
 
   pids="$(find_pids)"
   if [ -n "$pids" ]; then
@@ -70,6 +87,19 @@ stop() {
 
   echo "Jarvis stopped."
 }
+
+# Serialize lifecycle changes across interactive and SSH invocations. Keep
+# status/log viewers independent so they remain usable during a restart.
+case "${1:-}" in
+  start|stop|restart)
+    mkdir -p "$PROJECT_DIR/logs"
+    exec 9>"$PROJECT_DIR/logs/.management.lock"
+    if ! flock -w 15 9; then
+      echo "Another Jarvis management command is still running. Try again shortly." >&2
+      exit 1
+    fi
+    ;;
+esac
 
 case "${1:-}" in
   start)
@@ -86,8 +116,25 @@ case "${1:-}" in
     status
     ;;
   logs)
+    lines="${2:-80}"
+    if [[ "$lines" =~ ^[a-z0-9][a-z0-9-]{0,47}$ ]] && ! [[ "$lines" =~ ^[0-9]+$ ]]; then
+      LOG_FILE="$PROJECT_DIR/logs/devices/$lines.log"
+      lines="${3:-80}"
+      if [ ! -f "$LOG_FILE" ]; then
+        echo "No log for that device yet: $LOG_FILE" >&2
+        exit 1
+      fi
+    elif [ "$#" -gt 2 ]; then
+      usage >&2
+      exit 2
+    fi
+    if ! [[ "$lines" =~ ^[0-9]+$ ]] || [ "$#" -gt 3 ]; then
+      usage >&2
+      exit 2
+    fi
+    mkdir -p "$(dirname "$LOG_FILE")"
     touch "$LOG_FILE"
-    tail -f "$LOG_FILE"
+    exec tail -n "$lines" -F "$LOG_FILE"
     ;;
   *)
     usage

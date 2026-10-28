@@ -24,6 +24,7 @@ from config import (
     VOSK_MODEL_PATH,
     WAKE_REPLIES,
     WAKE_WORDS,
+    WAITING_ANNOUNCEMENTS,
 )
 from daily_context import (
     choose_wake_reply,
@@ -32,6 +33,7 @@ from daily_context import (
     record_utterance,
 )
 from detect_wake_word import WakeWordMonitor
+from echo_audio import set_echo_conversation_active
 from interruptions import WakeWordInterrupted, wait_for_result_or_wake_word
 from jarvis_command_server import start_command_server
 from listen_to_mic import (
@@ -72,6 +74,16 @@ END_SESSION_PHRASES = {
     "nothing jarvis",
     "stop",
     "stop jarvis",
+    "stop listening",
+    "stop talking",
+    "stop responding",
+    "be quiet",
+    "quiet",
+    "silence",
+    "shut up",
+    "that s enough",
+    "end conversation",
+    "end the conversation",
 }
 
 STAND_DOWN_PHRASES = {
@@ -94,7 +106,24 @@ def normalize_command(text: str) -> str:
 
 
 def is_end_session_command(text: str) -> bool:
-    return normalize_command(text) in END_SESSION_PHRASES
+    return normalize_control_command(text) in END_SESSION_PHRASES
+
+
+def normalize_control_command(text: str) -> str:
+    """Match whole local controls, allowing a wake name and polite wrappers."""
+    text = normalize_command(text)
+    wake_names = sorted({normalize_command(word) for word in WAKE_WORDS} |
+                        {'jarvis', 'computer', 'hey jarvis'}, key=len, reverse=True)
+    for _ in range(3):
+        for prefix in ['please'] + wake_names:
+            if text.startswith(prefix + ' '):
+                text = text[len(prefix) + 1:]
+                break
+        for suffix in ['please'] + wake_names:
+            if text.endswith(' ' + suffix):
+                text = text[:-len(suffix) - 1]
+                break
+    return text
 
 
 def is_wake_only_command(text: str) -> bool:
@@ -102,7 +131,7 @@ def is_wake_only_command(text: str) -> bool:
 
 
 def is_stand_down_command(text: str) -> bool:
-    return normalize_command(text) in STAND_DOWN_PHRASES
+    return normalize_control_command(text) in STAND_DOWN_PHRASES
 
 
 def stand_down_remaining(now: float | None = None) -> float:
@@ -139,8 +168,16 @@ def end_pasture_session_quietly():
 def speak(text: str, model=None, kind: str = "speech"):
     voice_event("spoken", kind=kind, text=text)
     with _speak_lock:
+        started = time.perf_counter()
         path = synthesize_to_wav(text)
+        synthesized = time.perf_counter()
+        voice_event("speech_audio_ready", kind=kind,
+                    synthesis_seconds=f"{synthesized - started:.3f}")
         play_wav_file(path)
+        finished = time.perf_counter()
+        voice_event("speech_output_finished", kind=kind,
+                    playback_seconds=f"{finished - synthesized:.3f}",
+                    total_seconds=f"{finished - started:.3f}")
 
 
 def speak_wake_reply(model=None) -> str | None:
@@ -235,6 +272,7 @@ def get_followup_until(model, seconds: int) -> str:
 
 
 def ask_and_speak(user_text: str, model, *, announce_waiting: bool = True) -> bool:
+    announce_waiting = announce_waiting and WAITING_ANNOUNCEMENTS
     for attempt in range(API_RETRY_COUNT):
         try:
             started_at = time.time()
@@ -520,6 +558,13 @@ def handle_command_server_instruction(model, payload: dict):
 
 
 def run_assistant():
+    try:
+        return _run_assistant()
+    finally:
+        set_echo_conversation_active(False)
+
+
+def _run_assistant():
     from vosk import Model
 
     print("Loading Vosk model...")
@@ -548,6 +593,7 @@ def run_assistant():
             print("Jarvis command server failed:", e, flush=True)
 
     while True:
+        set_echo_conversation_active(False)
         pending_command = get_pending_local_command()
         if pending_command:
             handle_command_server_instruction(model, pending_command)

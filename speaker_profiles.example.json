@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Example Bluetooth speaker",
+    "backend": "bluetooth",
+    "bluetooth_address": "00:11:22:33:44:55"
+  },
+  {
+    "name": "Example USB speaker",
+    "usb_by_id": "usb-REPLACE_WITH_YOUR_DEVICE_ID",
+    "device": 0,
+    "volume_control": "PCM",
+    "volume_level": "85%"
+  }
+]

@@ -1,0 +1,49 @@
+--- a/src/hassmic/audio_mixer.c
++++ b/src/hassmic/audio_mixer.c
+@@ -10,6 +10,8 @@
+ 
+ static MixerHandle cap, play;
+ static int cap_held;
++static unsigned play_bps;
++static size_t play_bytes;
+ 
+ int cap_open(void)
+ {
+@@ -71,6 +73,7 @@
+ 
+ int play_open(unsigned rate, unsigned channels)
+ {
++    play_bps = rate * channels * 2; play_bytes = 0;
+     play = MixerOpenPlay(rate, channels, 16, MIXER_PLAY_TTS);
+     return play ? 0 : -1;
+ }
+@@ -86,6 +89,7 @@
+         if (!n) n = len < capb ? len : capb;
+         copy_gain(buf, p, n, atomic_load(&tts_q16));
+         MixerReleaseBufPlay(play, n);
++        play_bytes += n;
+         p += n; len -= n;
+     }
+     return 0;
+@@ -94,7 +98,20 @@
+ void play_close(int drain)
+ {
+     if (!play) return;
+-    if (drain) MixerDrain(play); else MixerFlush(play);
++    if (drain) {
++        /* MixerDrain is asynchronous on biscuit. Keep the ring alive until
++         * queued PCM is consumed, before reporting played or reopening the mic. */
++        MixerDrain(play);
++        unsigned limit = (unsigned)(play_bytes * 1000ULL / (play_bps ? play_bps : 1)) + 2000;
++        unsigned waited = 0;
++        while (MixerGetNumBytes(play) > 0 && waited < limit) {
++            usleep(20000); waited += 20;
++        }
++        if (MixerGetNumBytes(play) > 0) {
++            fprintf(stderr, "play: mixer queue did not drain within %u ms\n", limit);
++            MixerFlush(play);
++        }
++    } else MixerFlush(play);
+     MixerClose(play);
+     play = NULL;
+ }

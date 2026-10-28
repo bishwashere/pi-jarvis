@@ -9,11 +9,7 @@ from config import (
     WAKE_WORDS,
 )
 from voice_log import voice_event
-
-
-WAKE_WORD_ALIASES = {
-    "below": "hello",
-}
+from echo_audio import consume_echo_wake, set_echo_conversation_active
 
 
 def normalize_text(text: str) -> str:
@@ -90,18 +86,6 @@ def get_wake_match(text: str, allow_lenient: bool = True) -> dict:
                 "score": 1.0,
             }
 
-    for candidate in iter_candidate_phrases(heard):
-        alias_match = WAKE_WORD_ALIASES.get(candidate)
-        if alias_match:
-            return {
-                "triggered": True,
-                "mode": "alias",
-                "heard": heard,
-                "matched": alias_match,
-                "candidate": candidate,
-                "score": 1.0,
-            }
-
     if not allow_lenient:
         return {"triggered": False, "heard": heard, "mode": "strict-only"}
 
@@ -165,7 +149,7 @@ class WakeWordMonitor:
 
         self.model = model
         self.recognizer = KaldiRecognizer(model, SAMPLE_RATE)
-        self.last_trigger_time = 0
+        self.last_trigger_time = float("-inf")
         self.last_partial = ""
         self.last_command_after_wake = ""
 
@@ -179,11 +163,16 @@ class WakeWordMonitor:
     def log_wake_match(self, match: dict, source: str):
         voice_event(
             "wake_heard",
+            detector="openwakeword" if source == "echo-openwakeword" else "vosk",
             source=source,
             mode=match.get("mode"),
             heard=match.get("heard"),
             matched=match.get("matched"),
+            score=match.get("score"),
         )
+        if match.get("mode") == "acoustic":
+            print(f"Acoustic wake match: model=hey_jarvis score={match['score']:.3f}", flush=True)
+            return
         if match.get("mode") == "strict":
             print(
                 "Wake match: "
@@ -205,23 +194,46 @@ class WakeWordMonitor:
             flush=True,
         )
 
+    def _accept_match(self, match, source):
+        now = time.monotonic()
+        if now - self.last_trigger_time < DUPLICATE_WAKE_SECONDS:
+            voice_event(
+                "wake_detection_ignored",
+                detector="openwakeword" if source == "echo-openwakeword" else "vosk",
+                source=source, reason="duplicate", matched=match.get("matched"),
+                score=match.get("score"),
+            )
+            return False
+        self.last_trigger_time = now
+        self.log_wake_match(match, source=source)
+        set_echo_conversation_active(True)
+        return True
+
     def accept_audio(self, data: bytes) -> bool:
+        score = consume_echo_wake()
+        if score is not None:
+            self.last_command_after_wake = ""
+            return self._accept_match({
+                "triggered": True, "mode": "acoustic",
+                "matched": "hey jarvis", "score": score,
+            }, "echo-openwakeword")
         if not self.recognizer.AcceptWaveform(data):
             partial = json.loads(self.recognizer.PartialResult()).get("partial", "")
             if partial and partial != self.last_partial:
-                print(f"Heard partial: {partial}", flush=True)
+                print(f"[Vosk] Heard partial: {partial}", flush=True)
                 self.last_partial = partial
 
             match = get_wake_match(partial, allow_lenient=False)
             if match["triggered"]:
-                self.log_wake_match(match, source="partial")
-            return match["triggered"]
+                self.last_command_after_wake = ""
+                return self._accept_match(match, "partial")
+            return False
 
         result = json.loads(self.recognizer.Result())
         heard = result.get("text", "").lower().strip()
 
         if heard:
-            print("Heard:", heard)
+            print("[Vosk] Heard:", heard, flush=True)
 
         match = get_wake_match(heard)
         if not match["triggered"]:
@@ -238,11 +250,4 @@ class WakeWordMonitor:
                     command=command_after_wake,
                 )
 
-        self.log_wake_match(match, source="final")
-
-        now = time.time()
-        if now - self.last_trigger_time < DUPLICATE_WAKE_SECONDS:
-            return False
-
-        self.last_trigger_time = now
-        return True
+        return self._accept_match(match, "final")

@@ -7,3 +7,8 @@ __pycache__/
 logs/
 runtime/cache/
 runtime/venv/
+
+# Machine-local hardware identities and generated session state
+echo_devices.json
+speaker_profiles.json
+:memory:.ses

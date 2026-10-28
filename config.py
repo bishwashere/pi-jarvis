@@ -50,6 +50,10 @@ PROJECT_DIR = PROJECT_DIR.absolute()
 RUNTIME_DIR = PROJECT_DIR / "runtime"
 ASSETS_DIR = RUNTIME_DIR / "assets"
 LOG_DIR = PROJECT_DIR / "logs"
+ECHO_LOG_MAX_BYTES = int(os.environ.get("JARVIS_ECHO_LOG_MAX_BYTES", str(5 * 1024 * 1024)))
+ECHO_LOG_BACKUP_COUNT = int(os.environ.get("JARVIS_ECHO_LOG_BACKUP_COUNT", "3"))
+if ECHO_LOG_MAX_BYTES <= 0 or ECHO_LOG_BACKUP_COUNT <= 0:
+    raise ValueError("JARVIS_ECHO_LOG_MAX_BYTES and JARVIS_ECHO_LOG_BACKUP_COUNT must be positive")
 
 
 # ---------- Audio ----------
@@ -57,6 +61,14 @@ LOG_DIR = PROJECT_DIR / "logs"
 # Python/sounddevice input device. Prefer a stable name/hint over a numeric
 # PortAudio index because indexes can change after reboot.
 AUDIO_DEVICE = _audio_device(os.environ.get("JARVIS_AUDIO_DEVICE", "default"))
+ECHO_BIND = os.environ.get("JARVIS_ECHO_BIND", "127.0.0.1")
+ECHO_PORT = int(os.environ.get("JARVIS_ECHO_PORT", "8766"))
+ECHO_DEVICE_ID = os.environ.get("JARVIS_ECHO_DEVICE_ID", "")
+ECHO_TOKEN = os.environ.get("JARVIS_ECHO_TOKEN", "")
+ECHO_NATIVE_WAKE = _env_bool("JARVIS_ECHO_NATIVE_WAKE", False)
+ECHO_WAKE_THRESHOLD = float(os.environ.get("JARVIS_ECHO_WAKE_THRESHOLD", "0.5"))
+if not 0 < ECHO_WAKE_THRESHOLD <= 1:
+    raise ValueError("JARVIS_ECHO_WAKE_THRESHOLD must be greater than 0 and at most 1")
 
 _audio_fallbacks = os.environ.get("JARVIS_AUDIO_DEVICE_FALLBACKS")
 if _audio_fallbacks:
@@ -86,6 +98,18 @@ CONFIGURE_VOLUME = _env_bool("JARVIS_CONFIGURE_VOLUME", True)
 VOLUME_CARD = os.environ.get("JARVIS_VOLUME_CARD", "2")
 VOLUME_CONTROL = os.environ.get("JARVIS_VOLUME_CONTROL", "PCM")
 VOLUME_LEVEL = os.environ.get("JARVIS_VOLUME_LEVEL", "85%")
+SPEAKER_PROFILES_PATH = _env_path(
+    "JARVIS_SPEAKER_PROFILES_PATH", PROJECT_DIR / "speaker_profiles.json"
+)
+SPEAKER_VOLUME_OVERRIDES = {
+    key: os.environ[env]
+    for key, env in {
+        "card": "JARVIS_VOLUME_CARD",
+        "control": "JARVIS_VOLUME_CONTROL",
+        "level": "JARVIS_VOLUME_LEVEL",
+    }.items()
+    if env in os.environ
+}
 
 SAMPLE_RATE = 16000
 VOSK_MODEL_PATH = _env_path(
@@ -124,9 +148,13 @@ DAILY_CONTEXT_PATH = _env_path(
     "JARVIS_DAILY_CONTEXT_PATH",
     LOG_DIR / "daily_context.json",
 )
-COMMAND_SILENCE_SECONDS = 2.0
+COMMAND_SILENCE_SECONDS = float(os.environ.get("JARVIS_COMMAND_SILENCE_SECONDS", "2.0"))
+if not 0 < COMMAND_SILENCE_SECONDS <= 10:
+    raise ValueError("JARVIS_COMMAND_SILENCE_SECONDS must be greater than 0 and at most 10")
 COMMAND_MIN_RECORD_SECONDS = 0.7
-COMMAND_AUDIO_RMS_THRESHOLD = 420
+COMMAND_AUDIO_RMS_THRESHOLD = int(os.environ.get("JARVIS_COMMAND_AUDIO_RMS_THRESHOLD", "420"))
+if COMMAND_AUDIO_RMS_THRESHOLD <= 0:
+    raise ValueError("JARVIS_COMMAND_AUDIO_RMS_THRESHOLD must be positive")
 WHISPER_TIMEOUT_SECONDS = 180
 QUICK_COMMAND_ENABLED = _env_bool("JARVIS_QUICK_COMMAND_ENABLED", True)
 QUICK_COMMAND_PHRASES = [
@@ -162,7 +190,7 @@ QUICK_COMMAND_PHRASES = [
 
 # For now, we are using Vosk based wake detection.
 # Keep longer phrases before shorter words so command cleanup works well.
-WAKE_WORDS = [
+_default_wake_words = [
     "hello jarvis",
     "hey jarvis",
     "hi jarvis",
@@ -171,13 +199,19 @@ WAKE_WORDS = [
     "jarvis",
     "computer",
     "hello",
-    "hi",
 ]
+WAKE_WORDS = [
+    " ".join(phrase.lower().split())
+    for phrase in os.environ.get("JARVIS_WAKE_WORDS", ",".join(_default_wake_words)).split(",")
+    if phrase.strip()
+]
+if not WAKE_WORDS:
+    raise ValueError("JARVIS_WAKE_WORDS must contain at least one wake phrase")
 
 # 0 = only wake on exact phrases in WAKE_WORDS.
 # 100 = wake on any recognized speech.
 # Values in between lower the similarity needed to treat speech as a wake phrase.
-LENIENT_WAKE_LEVEL = 40
+LENIENT_WAKE_LEVEL = max(0, min(100, int(os.environ.get("JARVIS_LENIENT_WAKE_LEVEL", "0"))))
 
 
 # ---------- Local AI API ----------
@@ -227,6 +261,17 @@ MAX_COMMAND_SECONDS = 60
 # How long to wait after an answer for a natural follow-up.
 FOLLOWUP_SECONDS = 20
 
+# Direct Echo: return to wake standby if speech has not begun. These do not
+# shorten the overall recording windows once the user starts speaking.
+HASSMIC_WAKE_WAIT_SECONDS = float(os.environ.get("JARVIS_HASSMIC_WAKE_WAIT_SECONDS", "5"))
+HASSMIC_FOLLOWUP_WAIT_SECONDS = float(os.environ.get("JARVIS_HASSMIC_FOLLOWUP_WAIT_SECONDS", "5"))
+for _wait_name, _wait_value in (
+    ("JARVIS_HASSMIC_WAKE_WAIT_SECONDS", HASSMIC_WAKE_WAIT_SECONDS),
+    ("JARVIS_HASSMIC_FOLLOWUP_WAIT_SECONDS", HASSMIC_FOLLOWUP_WAIT_SECONDS),
+):
+    if not 0 < _wait_value <= 60:
+        raise ValueError(f"{_wait_name} must be greater than 0 and at most 60")
+
 # Prevent duplicate wake triggers.
 DUPLICATE_WAKE_SECONDS = 3
 
@@ -253,7 +298,19 @@ COMMAND_SERVER_HOST = os.environ.get(
 # ---------- Voice / TTS ----------
 
 # Piper American female voice.
+# None preserves the voice model's own timing default.
+_piper_length_scale = os.environ.get("JARVIS_PIPER_LENGTH_SCALE", "").strip()
+PIPER_LENGTH_SCALE = float(_piper_length_scale) if _piper_length_scale else None
+if PIPER_LENGTH_SCALE is not None and not 0.5 <= PIPER_LENGTH_SCALE <= 3.0:
+    raise ValueError("JARVIS_PIPER_LENGTH_SCALE must be between 0.5 and 3.0")
+# Extra silence between Piper's sentence chunks, not after the final sentence.
+PIPER_SENTENCE_SILENCE = float(os.environ.get("JARVIS_PIPER_SENTENCE_SILENCE", "0.25"))
+if not 0 <= PIPER_SENTENCE_SILENCE <= 2.0:
+    raise ValueError("JARVIS_PIPER_SENTENCE_SILENCE must be between 0 and 2.0")
 PIPER_BINARY = os.environ.get("JARVIS_PIPER_BINARY", "piper")
+PIPER_BACKEND = os.environ.get("JARVIS_PIPER_BACKEND", "cli").strip().lower()
+if PIPER_BACKEND not in {"cli", "python"}:
+    raise ValueError("JARVIS_PIPER_BACKEND must be cli or python")
 PIPER_MODEL_PATH = _env_path(
     "JARVIS_PIPER_MODEL_PATH",
     ASSETS_DIR / "piper/en_US-amy-medium.onnx",
@@ -280,6 +337,7 @@ CHECKING_REPLIES = [
     "I'll check.",
 ]
 CHECKING_REPLY_DELAY_SECONDS = 4.0
+WAITING_ANNOUNCEMENTS = _env_bool("JARVIS_WAITING_ANNOUNCEMENTS", True)
 STILL_CHECKING_REPLIES = [
     "Still checking.",
     "Almost there.",
@@ -328,3 +386,20 @@ DAILY_CONTEXT_MAX_UTTERANCES = int(
 DAILY_CONTEXT_MAX_SUGGESTIONS = int(
     os.environ.get("JARVIS_DAILY_CONTEXT_MAX_SUGGESTIONS", "8")
 )
+
+# Experimental direct echo-dot-assist controller (opt-in entry point).
+ECHO_DEVICES_PATH = (_env_path("JARVIS_ECHO_DEVICES_PATH", PROJECT_DIR / "echo_devices.json")
+                     if os.environ.get("JARVIS_ECHO_DEVICES_PATH", "").strip() else "")
+HASSMIC_HOST = os.environ.get("JARVIS_HASSMIC_HOST", "").strip()
+STREAMING_ENABLED = _env_bool("JARVIS_STREAMING_ENABLED", False)
+STREAMING_INPUT_ENABLED = _env_bool("JARVIS_STREAMING_INPUT_ENABLED", False)
+STREAMING_WHISPER_THREADS = int(os.environ.get("JARVIS_STREAMING_WHISPER_THREADS", str(WHISPER_THREADS)))
+if not 1 <= STREAMING_WHISPER_THREADS <= 32:
+    raise ValueError("JARVIS_STREAMING_WHISPER_THREADS must be between 1 and 32")
+STREAMING_STT_INTERVAL = float(os.environ.get("JARVIS_STREAMING_STT_INTERVAL", "1.0"))
+if not 0.2 <= STREAMING_STT_INTERVAL <= 10:
+    raise ValueError("JARVIS_STREAMING_STT_INTERVAL must be between 0.2 and 10")
+VOICE_PROFILE_DIR = _env_path("JARVIS_VOICE_PROFILE_DIR", Path(LOG_DIR) / "voice_profiles")
+HASSMIC_PORT = int(os.environ.get("JARVIS_HASSMIC_PORT", "16700"))
+if not 1 <= HASSMIC_PORT <= 65535:
+    raise ValueError("JARVIS_HASSMIC_PORT must be between 1 and 65535")

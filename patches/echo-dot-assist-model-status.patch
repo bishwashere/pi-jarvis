@@ -1,0 +1,104 @@
+--- a/src/hassmic/wake_mww.c
++++ b/src/hassmic/wake_mww.c
+@@ -10,6 +10,8 @@
+  * -67 dBFS floor) the same with 0, +12 or +24 dB in front (window mean 229-255 of 255 throughout, 2026-10-07). */
+ #include "wake.h"
+ #include "mww.h"
++#include "hash.h"
++#include <pthread.h>
+ #include <stdatomic.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -29,8 +31,30 @@
+     atomic_int reset_pending;
+ } slots[WAKE_SLOTS];
+ static wake_cb callback;
++/* A locked snapshot is published only after successful initialization. Readers never
++ * inspect the detector's mutable state or files that may have changed since load. */
++static pthread_mutex_t status_lock = PTHREAD_MUTEX_INITIALIZER;
++static char loaded_status[WAKE_SLOTS][640];
++void mww_loaded_json(char *out, size_t cap)
++{
++    pthread_mutex_lock(&status_lock);
++    snprintf(out, cap, "[%s%s%s]", loaded_status[0],
++             loaded_status[0][0] && loaded_status[1][0] ? "," : "", loaded_status[1]);
++    pthread_mutex_unlock(&status_lock);
++}
++static void status_name(const char *in, char *out)
++{
++    /* Worst case six bytes per byte; caller reserves 6 * sizeof(mww_info.name) + 1. */
++    while (*in) {
++        unsigned char c = (unsigned char)*in++;
++        if (c == '"' || c == '\\') { *out++ = '\\'; *out++ = c; }
++        else if (c < 32) { sprintf(out, "\\u%04x", c); out += 6; }
++        else *out++ = c;
++    }
++    *out = 0;
++}
+ 
+-static void mww_close(int slot) { mww_model_free(slots[slot].model); slots[slot].model = NULL; }
++static void mww_close(int slot) { pthread_mutex_lock(&status_lock); loaded_status[slot][0] = 0; pthread_mutex_unlock(&status_lock); mww_model_free(slots[slot].model); slots[slot].model = NULL; }
+ 
+ static int mww_open(int slot, const char *manifest, wake_cb cb)
+ {
+@@ -52,6 +76,9 @@
+         fclose(f);
+     }
+     if (!buf || !(m->model = mww_model_load(buf, n, err, sizeof err))) { fprintf(stderr, "microwakeword: %s: %s\n", path, buf ? err : "cannot read"); free(buf); return -1; }
++    uint8_t digest[32]; char hex[65];
++    sha256(buf, n, digest);
++    for (int j = 0; j < 32; j++) sprintf(hex + 2*j, "%02x", digest[j]);
+     free(buf);
+     if (mww_features_init(&m->fe)) { mww_close(slot); return -1; }
+     snprintf(m->keyword, sizeof m->keyword, "%s", i.name);
+@@ -59,6 +86,12 @@
+     m->threshold = (int)(i.cutoff * 255);
+     m->have = m->nprob = 0; m->hold = HOLD_INFERENCES;
+     atomic_store(&m->reset_pending, 0);
++    char escaped[6 * sizeof i.name + 1]; status_name(i.name, escaped);
++    pthread_mutex_lock(&status_lock);
++    snprintf(loaded_status[slot], sizeof loaded_status[slot],
++             "{\"slot\":%d,\"name\":\"%s\",\"sha256\":\"%s\",\"cutoff\":%.4f,\"window\":%d}",
++             slot, escaped, hex, i.cutoff, i.window);
++    pthread_mutex_unlock(&status_lock);
+     fprintf(stderr, "microwakeword: \"%s\" loaded (cutoff %.2f over %d x %d ms)\n", m->keyword, i.cutoff, m->window, m->stride * 10);
+     return 0;
+ }
+--- a/src/hassmic/mww.h
++++ b/src/hassmic/mww.h
+@@ -86,4 +86,6 @@
+ int  mww_install_dir(const char *dir, const char *id, char *err, size_t errsz);
+ /* [{"id","name","langs","author","website","cutoff","window","size"}...] */
+ size_t mww_list_json(char *out, size_t cap);
++/* Successfully loaded model bytes, for the Wyoming startup handshake. */
++void mww_loaded_json(char *out, size_t cap);
+ #endif
+--- a/src/hassmic/proto_wyoming.c
++++ b/src/hassmic/proto_wyoming.c
+@@ -6,6 +6,7 @@
+ #include "board.h"
+ #include "core.h"
+ #include "wyoming.h"
++#include "mww.h"
+ 
+ #define TTS_RATE 22050      /* assumed when audio-start carries no rate */
+ 
+@@ -39,14 +40,15 @@
+ 
+ static void send_info(void)
+ {
+-    char data[1024];
++    char data[3072], loaded[1400];
++    mww_loaded_json(loaded, sizeof loaded);
+     snprintf(data, sizeof data,
+              "{\"asr\":[],\"tts\":[],\"handle\":[],\"intent\":[],\"wake\":[],\"mic\":[],\"snd\":[],"
+              "\"satellite\":{\"name\":\"%s\",\"attribution\":{\"name\":\"hassmic\",\"url\":\"\"},"
+              "\"installed\":true,\"description\":\"%s with Amazon audio front end\",\"version\":\"" VERSION "\","
+              "\"area\":null,\"has_vad\":false,\"active_wake_words\":[%s],\"max_active_wake_words\":1,"
+-             "\"supports_trigger\":true,\"supports_jarvis_followup\":true}}",
+-             core_name, board.model, core_local_wake ? "\"alexa\"" : "");
++             "\"supports_trigger\":true,\"supports_jarvis_followup\":true,\"loaded_wake_models\":%s}}",
++             core_name, board.model, core_local_wake ? "\"alexa\"" : "", loaded);
+     send_event("info", data, NULL, 0);
+ }
+ 

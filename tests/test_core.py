@@ -39,18 +39,11 @@ def test_parse_agent_reply_supports_plain_text_and_json():
 
 def test_wake_word_and_text_cleanup():
     assert get_wake_match("hey jarvis")["triggered"] is True
-    assert get_wake_match("below this") == {
-        "triggered": True,
-        "mode": "alias",
-        "heard": "below this",
-        "matched": "hello",
-        "candidate": "below",
-        "score": 1.0,
-    }
+    assert get_wake_match("below this")["triggered"] is False
     assert remove_wake_words("hey jarvis tell me the time") == "tell me the time"
     assert remove_phrase("jarvis stand down", "jarvis") == "stand down"
     assert remove_phrase("hello jarvis stand down", "hello jarvis") == "stand down"
-    assert clean_command_transcript("Hi.") == WAKE_ONLY_COMMAND
+    assert clean_command_transcript("Hi.") == "hi"
     assert clean_command_transcript("hello computer?") == WAKE_ONLY_COMMAND
     assert clean_command_transcript("Jarvis, what time is it?") == "what time is it"
     assert "yes" in QUICK_COMMANDS
@@ -368,6 +361,10 @@ def test_automatic_playback_backend_preserves_linux_and_supports_windows(monkeyp
 
 
 def test_sounddevice_playback_streams_pcm_wav_without_alsa(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        play_audio, "connected_profiles",
+        lambda: pytest.fail("PortAudio must not probe ALSA profiles"),
+    )
     wav_path = tmp_path / "reply.wav"
     frames = b"\x01\x00\x02\x00" * 32
     with wave.open(str(wav_path), "wb") as audio:

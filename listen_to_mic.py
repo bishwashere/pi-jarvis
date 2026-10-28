@@ -163,6 +163,10 @@ def reset_audio_device_selection():
 
 
 def open_microphone_stream():
+    if str(AUDIO_DEVICE).lower() == "echomuse":
+        from echo_audio import get_echo
+
+        return get_echo().microphone(audio_queue, SAMPLE_RATE)
     device = resolve_audio_device()
     return sd.RawInputStream(
         samplerate=SAMPLE_RATE,

@@ -1,6 +1,7 @@
 import os
 import json
 import queue
+import re
 import subprocess
 import sys
 import time
@@ -130,19 +131,30 @@ def is_non_command_transcript(text: str) -> bool:
     return all(word in NON_COMMAND_CUE_WORDS for word in words)
 
 
-def clean_command_transcript(text: str) -> str:
+def clean_command_transcript(text: str, *, log: bool = True) -> str:
     if is_non_command_transcript(text):
-        voice_event("transcript_ignored", reason="non_command", text=text)
-        print(f"Ignoring non-command transcript: {text!r}", flush=True)
+        if log:
+            voice_event("transcript_ignored", reason="non_command", text=text)
+            print(f"Ignoring non-command transcript: {text!r}", flush=True)
         return ""
 
+    # Whisper can render spoken addition as symbols. Expand numeric plus before
+    # punctuation cleanup so "2+2" does not become the different command "2 2".
+    # Do not interpret slashes or hyphens as arithmetic: they may be dates.
+    text = re.sub(
+        r"(?<=\d)\s*\+\s*(?=\d)",
+        " plus ",
+        text,
+    )
     normalized = normalize_transcript(text)
     command = remove_wake_words(normalized)
     if has_strict_wake_word(normalized) and not command:
-        voice_event("transcript_wake_only", text=text)
+        if log:
+            voice_event("transcript_wake_only", text=text)
         return WAKE_ONLY_COMMAND
 
-    voice_event("transcript_accepted", command=command)
+    if log:
+        voice_event("transcript_accepted", command=command)
     return command
 
 
@@ -238,11 +250,11 @@ def detect_quick_command(recognizer, data: bytes, source: str) -> str:
     if recognizer.AcceptWaveform(data):
         text = json.loads(recognizer.Result()).get("text", "")
     else:
-        text = json.loads(recognizer.PartialResult()).get("partial", "")
+        return ""
 
     normalized = normalize_transcript(text)
     if normalized in QUICK_COMMANDS:
-        voice_event("quick_command_detected", source=source, command=normalized)
+        voice_event("quick_command_candidate", source=source, command=normalized)
         return normalized
 
     return ""
@@ -258,6 +270,7 @@ def record_command_audio(seconds: int, model=None) -> tuple[str, str]:
     peak_rms = 0.0
     stop_reason = "recording window expired"
     quick_recognizer = build_quick_command_recognizer(model)
+    quick_candidate = ""
 
     voice_event("audio_recording_started", seconds=seconds)
     print(f"Recording command audio for up to {seconds} seconds...")
@@ -297,14 +310,9 @@ def record_command_audio(seconds: int, model=None) -> tuple[str, str]:
                     source="recording",
                 )
                 if quick_command:
-                    elapsed = time.time() - start
-                    voice_event(
-                        "audio_recording_finished",
-                        reason="quick_command",
-                        elapsed_seconds=f"{elapsed:.1f}",
-                        peak_rms=f"{peak_rms:.0f}",
-                    )
-                    return quick_command, ""
+                    # A constrained recognizer can force a longer utterance into
+                    # "nothing" or "stop". Keep recording and let Whisper decide.
+                    quick_candidate = quick_command
 
             if (
                 speech_started
@@ -339,7 +347,7 @@ def record_command_audio(seconds: int, model=None) -> tuple[str, str]:
         peak_rms=f"{peak_rms:.0f}",
     )
     write_wav(COMMAND_RECORDING_PATH, frames)
-    return "", COMMAND_RECORDING_PATH
+    return quick_candidate, COMMAND_RECORDING_PATH
 
 
 def transcribe_with_whisper(audio_path: str, *, clean: bool = True) -> str:
@@ -446,14 +454,18 @@ def listen_for_command_with_whisper(
 
     while time.time() < deadline:
         remaining = max(1, int(deadline - time.time()))
-        quick_command, audio_path = record_command_audio(remaining, model=model)
-        if quick_command:
-            return quick_command
-
+        quick_candidate, audio_path = record_command_audio(remaining, model=model)
         if not audio_path:
             return ""
 
         command = transcribe_with_whisper(audio_path)
+        if quick_candidate:
+            voice_event(
+                "quick_command_verified",
+                candidate=quick_candidate,
+                transcript=command,
+                confirmed=command == quick_candidate,
+            )
         if command:
             return command
 
@@ -494,6 +506,7 @@ def listen_for_command(
     final_parts = []
     stop_reason = "listen window expired"
 
+    voice_event("command_listen_started", engine="vosk", seconds=seconds)
     print(f"Listening for command for up to {seconds} seconds...")
 
     with open_microphone_stream():
@@ -545,6 +558,8 @@ def listen_for_command(
     elapsed = time.time() - start
 
     if not final_parts and last_partial:
+        voice_event("vosk_transcript", text=last_partial, source="partial_fallback",
+                    elapsed_seconds=f"{elapsed:.3f}", reason=stop_reason)
         print(
             f"Stopped listening after {elapsed:.1f}s: "
             f"{stop_reason}; using partial transcript."
@@ -552,6 +567,8 @@ def listen_for_command(
         return clean_command_transcript(last_partial)
 
     command = " ".join(final_parts).strip()
+    voice_event("vosk_transcript", text=command, source="final",
+                elapsed_seconds=f"{elapsed:.3f}", reason=stop_reason)
     if command:
         print(f"Stopped listening after {elapsed:.1f}s: {stop_reason}.")
     else:

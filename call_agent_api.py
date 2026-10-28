@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 
 import requests
+from device_context import conversation_id as current_conversation_id, request_headers, device_id
 
 from config import (
     API_CONVERSATION_ID,
@@ -14,8 +15,9 @@ from config import (
 
 
 def log_api_event(label: str, value):
-    timestamp = datetime.now().isoformat(timespec="seconds")
-    print(f"[{timestamp}] Pasture {label}: {value}", flush=True)
+    timestamp = datetime.now().isoformat(timespec="milliseconds")
+    print(f"[{timestamp}] Pasture {label}"
+          f"{' device_id=' + device_id() if device_id() else ''}: {value}", flush=True)
 
 
 def parse_agent_reply(content: str) -> dict:
@@ -56,10 +58,11 @@ def parse_agent_reply(content: str) -> dict:
 def post_pasture_message(
     user_text: str,
     *,
-    conversation_id: str = API_CONVERSATION_ID,
+    conversation_id: str | None = None,
     timeout: int = 60,
     log_label: str = "request",
 ) -> str:
+    conversation_id = conversation_id or current_conversation_id()
     log_api_event(
         log_label,
         {
@@ -74,6 +77,7 @@ def post_pasture_message(
         headers={
             "Content-Type": "application/json",
             "X-Pasture-Conversation-Id": conversation_id,
+            **request_headers(),
         },
         json={
             "model": API_MODEL,
@@ -113,16 +117,18 @@ def ask_pasture_for_daily_context(user_text: str) -> str:
 
 
 def start_new_pasture_session() -> bool:
+    conversation_id = current_conversation_id()
     try:
         response = requests.post(
             API_URL,
             headers={
                 "Content-Type": "application/json",
-                "X-Pasture-Conversation-Id": API_CONVERSATION_ID,
+                "X-Pasture-Conversation-Id": conversation_id,
+                **request_headers(),
             },
             json={
                 "model": API_MODEL,
-                "conversation_id": API_CONVERSATION_ID,
+                "conversation_id": conversation_id,
                 "messages": [
                     {
                         "role": "user",
@@ -136,7 +142,7 @@ def start_new_pasture_session() -> bool:
         log_api_event(
             "session",
             {
-                "conversation_id": API_CONVERSATION_ID,
+                "conversation_id": conversation_id,
                 "status": "new session started",
             },
         )
@@ -145,7 +151,7 @@ def start_new_pasture_session() -> bool:
         log_api_event(
             "session",
             {
-                "conversation_id": API_CONVERSATION_ID,
+                "conversation_id": conversation_id,
                 "status": "new session failed",
                 "error": str(e),
             },

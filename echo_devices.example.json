@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "devices": [
+    {
+      "device_id": "echo-1",
+      "display_name": "Echo 1",
+      "hardware_serial": "REPLACE_WITH_ECHO_1_SERIAL",
+      "room": null,
+      "wyoming_host": "echo-1.example.invalid",
+      "wyoming_port": 16700,
+      "conversation_id": "raspberry-pi-jarvis",
+      "wake_group": "shared",
+      "enabled": true
+    },
+    {
+      "device_id": "echo-2",
+      "display_name": "Echo 2",
+      "hardware_serial": "REPLACE_WITH_ECHO_2_SERIAL",
+      "room": null,
+      "wyoming_host": "echo-2.example.invalid",
+      "wyoming_port": 16700,
+      "conversation_id": "raspberry-pi-jarvis-echo-2",
+      "wake_group": "shared",
+      "enabled": true
+    }
+  ],
+  "default_device_id": "echo-1"
+}

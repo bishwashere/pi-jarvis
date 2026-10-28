@@ -1,0 +1,25 @@
+--- a/src/hassmic/proto_wyoming.c
++++ b/src/hassmic/proto_wyoming.c
+@@ -45,7 +45,7 @@
+              "\"satellite\":{\"name\":\"%s\",\"attribution\":{\"name\":\"hassmic\",\"url\":\"\"},"
+              "\"installed\":true,\"description\":\"%s with Amazon audio front end\",\"version\":\"" VERSION "\","
+              "\"area\":null,\"has_vad\":false,\"active_wake_words\":[%s],\"max_active_wake_words\":1,"
+-             "\"supports_trigger\":true}}",
++             "\"supports_trigger\":true,\"supports_jarvis_followup\":true}}",
+              core_name, board.model, core_local_wake ? "\"alexa\"" : "");
+     send_event("info", data, NULL, 0);
+ }
+@@ -74,7 +74,12 @@
+         wy_json_int(ev->json, "rate", &rate); wy_json_int(ev->json, "channels", &ch); wy_json_int(ev->json, "width", &width);
+         if (width != 2) fprintf(stderr, "play: unsupported sample width %ld, expect noise\n", width);
+         core_tts_begin(rate, ch, 0);
+-    } else if (!strcmp(t, "audio-stop")) core_tts_end();
++    } else if (!strcmp(t, "audio-stop")) {
++        long followup = 0;
++        wy_json_int(ev->json, "jarvis_followup", &followup);
++        if (followup == 1) core_restart_after();
++        core_tts_end();
++    }
+     else if (!strcmp(t, "error")) {
+         char code[64] = "";
+         fprintf(stderr, "server error: %s\n", ev->json);
