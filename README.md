@@ -45,7 +45,7 @@ sudo apt install -y alsa-utils portaudio19-dev git make gcc g++ cmake curl
 Install `whisper.cpp` outside this project directory:
 
 ```sh
-cd /home/jarvis
+cd /home/<user>
 git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git
 cd whisper.cpp
 make -j2
@@ -55,8 +55,8 @@ make -j2
 Confirm the Whisper binary and model exist:
 
 ```sh
-ls -lh /home/jarvis/whisper.cpp/build/bin/whisper-cli
-ls -lh /home/jarvis/whisper.cpp/models/ggml-tiny.en.bin
+ls -lh /home/<user>/whisper.cpp/build/bin/whisper-cli
+ls -lh /home/<user>/whisper.cpp/models/ggml-tiny.en.bin
 ```
 
 ## 2. Run
@@ -127,7 +127,7 @@ On Windows PowerShell, the equivalent checks are:
 Check the command center from the Mac or another LAN client:
 
 ```sh
-curl http://192.168.1.85:8765/health
+curl http://<PI_LAN_IP>:8765/health
 ```
 
 Check whether Jarvis is running:
@@ -136,7 +136,7 @@ Check whether Jarvis is running:
 pgrep -af 'jarvis_voice.py|run_jarvis.sh'
 ```
 
-Follow the live log from `/home/jarvis/jarvis`:
+Follow the live log from `/home/<user>/jarvis`:
 
 ```sh
 tail -n 100 -f logs/jarvis_voice.log
@@ -165,20 +165,20 @@ amixer scontrols
 Test Linux speaker playback:
 
 ```sh
-aplay -D plughw:2,0 logs/reply.wav
+aplay -D <audio-device> logs/reply.wav
 ```
 
 Test Piper manually on Linux:
 
 ```sh
 echo "Jarvis is online." | piper --model runtime/assets/piper/en_US-amy-medium.onnx --output_file /tmp/jarvis-test.wav
-aplay -D plughw:2,0 /tmp/jarvis-test.wav
+aplay -D <audio-device> /tmp/jarvis-test.wav
 ```
 
 Test Whisper manually on the Pi/Linux deployment:
 
 ```sh
-cd /home/jarvis/whisper.cpp
+cd /home/<user>/whisper.cpp
 ./build/bin/whisper-cli -m models/ggml-tiny.en.bin -f samples/jfk.wav -nt -np -t 1
 ```
 
@@ -187,13 +187,13 @@ cd /home/jarvis/whisper.cpp
 Install an `@reboot` cron entry for the `jarvis` user:
 
 ```sh
-(crontab -l 2>/dev/null; echo '@reboot sleep 20 && /home/jarvis/jarvis/run_jarvis.sh') | crontab -
+(crontab -l 2>/dev/null; echo '@reboot sleep 20 && /home/<user>/jarvis/run_jarvis.sh') | crontab -
 ```
 
 Start it immediately with the same launcher:
 
 ```sh
-nohup /home/jarvis/jarvis/run_jarvis.sh >/dev/null 2>&1 &
+nohup /home/<user>/jarvis/run_jarvis.sh >/dev/null 2>&1 &
 ```
 
 For manual control after installing `bin/jarvis` to `/usr/local/bin/jarvis`:
@@ -214,7 +214,7 @@ attempt:
 
 ```sh
 ./bin/pi-ssh 'jarvis status'
-./bin/pi-ssh 'tail -n 100 /home/jarvis/jarvis/logs/jarvis_voice.log'
+./bin/pi-ssh 'tail -n 100 /home/<user>/jarvis/logs/jarvis_voice.log'
 ```
 
 ## 5. Configuration Reference
@@ -223,10 +223,10 @@ Defaults live in `config.py`. Repository assets and logs are resolved from the
 checkout automatically. Settings can be overridden without editing code by
 using environment variables.
 
-- Microphone input device: `AUDIO_DEVICE = "default"` with fallbacks for `pulse`, `P10S: USB Audio`, `USB Audio`, and index `0`.
+- Microphone input device: `AUDIO_DEVICE = "default"` with fallbacks for `pulse`, `a USB audio device`, and index `0`.
 - Playback backend: automatic (`alsa` on Linux, `sounddevice` on Windows)
-- Speaker playback device: `plughw:2,0` on Linux and the system default elsewhere
-- Linux ALSA volume card/control: card `2`, control `PCM`, volume `85%`
+- Speaker playback device: a USB audio device on Linux and the system default elsewhere
+- Linux ALSA volume card/control: the configured card/control, volume `85%`
 - Wake words/phrases: `hello jarvis`, `hey jarvis`, `hello computer`, `hey computer`, `jarvis`, `computer`, `hello`
 - Lenient wake level: `40`, where `0` only wakes on exact configured phrases and `100` wakes on any recognized speech.
 - Command speech-to-text engine: `whisper`; Vosk is still used for wake detection.
@@ -234,8 +234,8 @@ using environment variables.
 - Wake response: `Hi. How can I help?`
 - Initial command listen window: `60` seconds, with an earlier stop after speech followed by a short silence.
 - Follow-up listen window after an answer: `4` seconds.
-- Agent API: `http://192.168.1.82:1235/v1/agents/jarvis`
-- Command center: `http://192.168.1.85:8765` on the deployed Jarvis Pi.
+- Agent API: `http://<PI_LAN_IP>:1235/v1/agents/jarvis`
+- Command center: `http://<PI_LAN_IP>:8765` on the deployed Jarvis Pi.
 - Vosk model: `runtime/assets/vosk-model-small-en-us-0.15`
 - Piper voice model: `runtime/assets/piper/en_US-amy-medium.onnx`
 
@@ -399,4 +399,4 @@ Command: what is the weather today
 - If audio plays through the wrong speaker on Linux, run `aplay -l` and update `PLAYBACK_DEVICE`. On Windows, use the `sounddevice` command above and set `JARVIS_PLAYBACK_DEVICE` to the desired name or index.
 - If Windows blocks the PowerShell launcher, allow scripts only for the current shell with `Set-ExecutionPolicy -Scope Process Bypass`, then run `.\run_local.ps1` again.
 - Windows x64 is supported by the locked native packages; Windows ARM and 32-bit Windows are not currently validated.
-- If LAN clients cannot reach Jarvis, confirm they are using the deployed Pi address and command-center port, for example `http://192.168.1.85:8765`.
+- If LAN clients cannot reach Jarvis, confirm they are using the deployed Pi address and command-center port, for example `http://<PI_LAN_IP>:8765`.
