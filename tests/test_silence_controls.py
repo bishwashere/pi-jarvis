@@ -14,6 +14,7 @@ import hassmic_jarvis as bridge
     'Computer, stop listening.', 'Hey Jarvis, be quiet please.',
     'Please stop talking, Jarvis.', 'silence', 'quiet', 'shut up',
     "That's enough", 'end the conversation', 'stop responding',
+    'cancel stop', 'cancel cancel', 'stop and be quiet',
 ])
 def test_silence_phrases_match(text):
     assert conversation.is_end_session_command(text)
@@ -75,17 +76,14 @@ def control_wire(monkeypatch, text, followup):
 
 
 @pytest.mark.parametrize('followup', [False, True])
-@pytest.mark.parametrize('text', ['stop', 'Computer, stop listening.', 'Please be quiet, Jarvis.', 'cancel'])
-def test_silence_ends_capture_before_session_reset(tmp_path, monkeypatch, text, followup):
+@pytest.mark.parametrize('text', ['stop', 'Computer, stop listening.', 'Please be quiet, Jarvis.', 'cancel', 'cancel stop'])
+def test_silence_ends_capture_without_backend_call(tmp_path, monkeypatch, text, followup):
     wire, transcribe, ask, sent, events, captures, asked = control_wire(monkeypatch, text, followup)
-    resets = []
     def reset():
-        assert sent[-1][0] == ('error', {'code': 'stt-no-text-recognized'})
-        resets.append(True)
+        pytest.fail('Local stop must not reset the backend session')
     monkeypatch.setattr(call_agent_api, 'start_new_pasture_session', reset)
     with pytest.raises(EOFError):
         bridge.serve(wire, transcribe, ask, synthesize, tmp_path)
-    assert resets == [True]
     assert len(captures) == 1 + followup
     assert len(asked) == followup
     # No silence acknowledgement or new follow-up window is sent.
@@ -123,7 +121,8 @@ def test_stand_down_pauses_wakes_and_announcements_then_resumes(tmp_path, monkey
     with pytest.raises(EOFError):
         bridge.serve(wire, transcribe, ask, synthesize, tmp_path, announcements=announcements)
     controls = [args for args, _ in sent]
-    assert ('audio-stop', {'jarvis_followup': 0}) in controls
+    assert ('audio-stop', {'jarvis_followup': 0}) not in controls
+    assert ('error', {'code': 'stt-no-text-recognized'}) in controls
     assert controls.count(('pause-satellite',)) == 2  # command, then raced wake
     assert controls.count(('run-satellite',)) == 2  # startup and timer expiry
     assert ('pong',) in controls
@@ -147,11 +146,12 @@ def test_reconnection_during_stand_down_never_enables_wake(tmp_path, monkeypatch
     assert sent == [('describe',), ('pause-satellite',)]
 
 
-def test_stand_down_still_pauses_if_confirmation_fails(tmp_path, monkeypatch):
+def test_stand_down_never_needs_synthesis(tmp_path, monkeypatch):
     wire, transcribe, ask, sent, events, captures, asked = control_wire(monkeypatch, 'stand down', False)
     def broken_synthesis(*args):
-        raise RuntimeError('Piper unavailable')
-    with pytest.raises(RuntimeError, match='Piper unavailable'):
+        pytest.fail('Stand down must not synthesize a confirmation')
+    wire.ready = lambda *args: (_ for _ in ()).throw(EOFError('end test'))
+    with pytest.raises(EOFError):
         bridge.serve(wire, transcribe, ask, broken_synthesis, tmp_path)
     assert sent[-1][0] == ('pause-satellite',)
     assert conversation.stand_down_remaining() > 0

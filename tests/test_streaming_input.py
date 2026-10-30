@@ -18,6 +18,32 @@ class Response:
                      'event: done', 'data: {}', ''])
 
 
+@pytest.mark.parametrize('text', ['cancel', 'cancel stop', 'quiet', 'stand', 'stand down',
+                                 'Computer, stop listening please'])
+def test_local_control_partials_do_not_open_api_request(monkeypatch, text):
+    monkeypatch.setattr(upstream.requests, 'post', lambda *a, **k: pytest.fail('Local control opened API'))
+    with upstream.StreamingInput() as session:
+        session.partial(text)
+        assert session.thread is None
+        assert session.pending is None
+
+
+def test_cancel_timer_still_reaches_backend(monkeypatch):
+    sent = threading.Event()
+    def post(*args, **kwargs):
+        for chunk in kwargs['data']:
+            event = json.loads(chunk)
+            if event.get('text') == 'cancel the timer':
+                sent.set()
+        return Response()
+    monkeypatch.setattr(upstream.requests, 'post', post)
+    with upstream.StreamingInput() as session:
+        session.partial('cancel')
+        assert session.thread is None
+        session.partial('cancel the timer')
+        assert sent.wait(2)
+
+
 def test_upload_sends_partial_before_commit_and_only_one_final_request(monkeypatch):
     got_partial = threading.Event()
     records, calls = [], []

@@ -154,7 +154,7 @@ def play_sentences(wire, parts, prepared, followup=True):
             raise RuntimeError('New wake interrupted streaming reply')
 
 
-def stream_reply(wire, text, synthesize, directory, events=api_events):
+def stream_reply(wire, text, synthesize, directory, events=api_events, *, followup=True):
     started = time.monotonic()
     prepared = PreparedSpeech(synthesize, directory)
     draft = ''
@@ -182,7 +182,7 @@ def stream_reply(wire, text, synthesize, directory, events=api_events):
                 content = speech_text(event['content'])
                 parts, _ = sentences(content, final=True)
                 voice_event('streaming_reply_committed', elapsed_seconds=f'{time.monotonic()-started:.3f}', text=content)
-                play_sentences(wire, parts, prepared)
+                play_sentences(wire, parts, prepared, followup=followup)
                 replied = True
                 voice_event('hassmic_playback_finished', streaming=True)
             elif kind == 'done':

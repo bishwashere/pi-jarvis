@@ -269,7 +269,7 @@ def test_stand_down_command_starts_one_hour_quiet_mode(monkeypatch):
     assert conversation_loop.stand_down_remaining(now=1000.0) == 3600.0
     assert conversation_loop.is_standing_down(now=4599.0) is True
     assert conversation_loop.is_standing_down(now=4600.0) is False
-    assert spoken == [("Standing down for one hour.", "stand_down")]
+    assert spoken == []
     assert any(args == ("stand_down_started",) for args, kwargs in events)
 
 

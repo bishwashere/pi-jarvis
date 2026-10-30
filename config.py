@@ -306,6 +306,10 @@ if not 1 <= COMMAND_SERVER_MAX_CONNECTIONS <= 128:
 
 # ---------- Voice / TTS ----------
 
+ANNOUNCEMENT_CHIME_GAP_SECONDS = float(os.environ.get("JARVIS_ANNOUNCEMENT_CHIME_GAP_SECONDS", "2"))
+if not 0 <= ANNOUNCEMENT_CHIME_GAP_SECONDS <= 10:
+    raise ValueError("JARVIS_ANNOUNCEMENT_CHIME_GAP_SECONDS must be between 0 and 10")
+
 # Piper American female voice.
 # None preserves the voice model's own timing default.
 _piper_length_scale = os.environ.get("JARVIS_PIPER_LENGTH_SCALE", "").strip()

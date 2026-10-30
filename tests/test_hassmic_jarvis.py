@@ -130,7 +130,8 @@ def test_brief_playback_tail_does_not_end_followup_early(tmp_path):
     assert sent == [('error', {'code': 'stt-no-text-recognized'})]
 
 
-def test_announcement_plays_without_wake_then_listens(tmp_path, monkeypatch):
+@pytest.mark.parametrize('followup', [True, False])
+def test_announcement_plays_without_wake_then_listens(tmp_path, monkeypatch, followup):
     client, satellite = socket.socketpair()
     client.settimeout(2)
     satellite.settimeout(2)
@@ -144,17 +145,18 @@ def test_announcement_plays_without_wake_then_listens(tmp_path, monkeypatch):
             peer.send('info', {'satellite': {'supports_jarvis_followup': True}})
             assert peer.next_event()[0] == 'run-satellite'
             # Arrives while the controller waits for a wake, not before startup.
-            assert announcements.handle({'message': 'Welcome home.'})['queued']
+            assert announcements.handle({'message': 'Welcome home.', 'followup': followup})['queued']
             assert peer.next_event()[0] == 'audio-start'
             received = 0
             while True:
                 kind, data, pcm = peer.next_event()
                 received += len(pcm)
                 if kind == 'audio-stop':
-                    assert data['jarvis_followup'] == 1
+                    assert data['jarvis_followup'] == int(followup)
                     assert received > 0
                     peer.send('played')
-                    peer.send('run-pipeline', {'start_stage': 'asr'})
+                    if followup:
+                        peer.send('run-pipeline', {'start_stage': 'asr'})
                     break
         except BaseException as exc:
             failures.append(exc)
@@ -175,7 +177,7 @@ def test_announcement_plays_without_wake_then_listens(tmp_path, monkeypatch):
         assert not worker.is_alive()
         assert not failures
         assert 'command_server_instruction_finished' in events
-        assert 'hassmic_listen_started' in events
+        assert ('hassmic_listen_started' in events) == followup
         assert announcements.pending.empty()
     finally:
         controller.close()
@@ -185,6 +187,7 @@ def test_announcement_validation_and_bounded_queue():
     announcements = bridge.Announcements()
     assert not announcements.handle({'command': 'delete', 'text': 'x'})['ok']
     assert not announcements.handle({'text': ''})['ok']
+    assert not announcements.handle({'text': 'hello', 'followup': 'false'})['ok']
     for _ in range(64):
         assert announcements.handle({'action': 'say', 'instruction': 'hello'})['queued']
     assert not announcements.handle({'text': 'overflow'})['ok']
@@ -351,3 +354,46 @@ def test_speech_started_before_timeout_can_continue_past_five_seconds(tmp_path):
     assert sent == [('transcript', {'text':''})]
     with wave.open(str(path)) as audio:
         assert audio.getnframes()/16000 > 8
+
+
+def test_arrival_yes_includes_question_and_returns_to_standby(tmp_path, monkeypatch):
+    events = iter([
+        ('info', {'satellite': {'supports_jarvis_followup': True}}, b''),
+        ('run-pipeline', {'start_stage': 'asr'}, b''),
+    ])
+    wire = SimpleNamespace(sock=SimpleNamespace(settimeout=lambda _: None),
+                           send=lambda *a, **k: None,
+                           next_event=lambda: next(events), ready=lambda _: False)
+    announcements = bridge.Announcements()
+    question = 'Would you like a quick weather update?'
+    announcements.handle({'text': question, 'one_reply': True})
+    played, requests = [], []
+    monkeypatch.setattr(bridge, 'voice_event', lambda *a, **k: None)
+    monkeypatch.setattr('conversation_loop.stand_down_remaining', lambda: 0)
+    monkeypatch.setattr(bridge, 'capture', lambda *a, **k: True)
+    monkeypatch.setattr(bridge, 'play', lambda *a, followup: played.append(followup))
+    def ask(text):
+        requests.append(text)
+        return {'reply': 'Sunny today.'}
+    bridge.serve(wire, lambda _: 'yes', ask, lambda text, path: path,
+                 tmp_path, announcements=announcements, max_turns=1)
+    assert played == [True, False]
+    assert question in requests[0]
+    assert 'User response: yes' in requests[0]
+    assert 'Do not ask a follow-up question.' in requests[0]
+
+
+def test_arrival_chime_preserves_speech_after_two_second_gap(tmp_path, monkeypatch):
+    import announcement_audio
+    monkeypatch.setattr(announcement_audio, 'ANNOUNCEMENT_CHIME_GAP_SECONDS', 2)
+    speech = b'\x01\x02' * 800
+    source = tmp_path / 'speech.wav'
+    with wave.open(str(source), 'wb') as output:
+        output.setparams((1, 2, 8000, 0, 'NONE', 'not compressed'))
+        output.writeframes(speech)
+    with wave.open(announcement_audio.prepend_chime(source), 'rb') as output:
+        pcm = output.readframes(output.getnframes())
+    chime_bytes = 3 * round(8000 * .18) * 2
+    assert any(pcm[:chime_bytes])
+    assert pcm[chime_bytes:chime_bytes + 32000] == bytes(32000)
+    assert pcm[chime_bytes + 32000:] == speech

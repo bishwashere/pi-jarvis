@@ -708,10 +708,13 @@ and **end the conversation** end the current conversation without an agent
 reply or another follow-up recording. Wake listening remains available for a
 new request. You can include a wake name or “please,” such as “Computer, stop
 listening” or “Please be quiet, Jarvis.” Matching requires a complete control
-phrase; requests such as “stop the music” still go to the agent.
+phrase or a sequence of complete controls, such as “cancel, stop”; requests such
+as “stop the music” or “cancel the timer” still go to the agent. These controls
+return locally without a backend session-reset call or spoken acknowledgement.
+Recognized control-only incremental transcripts are not uploaded to Pasture.
 
 **Stand down** also pauses on-Echo wake handling for one hour by default
-(`JARVIS_STAND_DOWN_SECONDS`, in seconds). It acknowledges once without opening
+(`JARVIS_STAND_DOWN_SECONDS`, in seconds). It silently ends capture without opening
 a follow-up window, sends `pause-satellite`, and queues announcements until
 the pause ends. The pause survives Echo reconnections within the running Pi
 process. At expiry, wake handling resumes automatically; `jarvis restart`
@@ -996,6 +999,14 @@ Echo. Existing Home Assistant alerts continue to use Echo 1 by default. Pasture
 receives the separate conversation IDs; automatic per-device reminder routing in
 Pasture requires it to supply the desired device selector to this command endpoint.
 
+Announcements open a follow-up listening window by default. Set `"followup": false`
+alongside the text and device selector for a one-way announcement that returns
+straight to wake standby. Set `"one_reply": true` to listen for one user response,
+answer it briefly without another question, and return to standby. Set
+`"chime": true` to prepend a short chime and a two-second quiet gap before the
+announcement. These fields must be JSON booleans. The gap is configurable with
+`JARVIS_ANNOUNCEMENT_CHIME_GAP_SECONDS` (0–10 seconds).
+
 The deployed setup has two registered Echos. Tests exercise concurrent sessions
 with virtual Wyoming peers; capacity beyond the two-device deployment has not
 been established. The current seven-second
@@ -1003,10 +1014,17 @@ no-speech waits, 1.5-second end-of-speech pause and streaming paths are preserve
 
 #### Home Assistant arrival weather notes
 
-The deployed Home Assistant household welcome waits ten seconds after entry and
-targets Echo 1. Its weather-pattern logic runs in Home Assistant, separately from
-the Pi runtime. Guest welcomes retain their greeting-only behavior and ten-second
-delay.
+The deployed Home Assistant household arrival flow gives a short welcome on
+Echo 2 (currently the office speaker): queue a chime at entry, pause two seconds
+after the chime, then speak the welcome. Around ten seconds after entry it asks
+a conversational question on Echo 1 (kitchen). The existing
+arrival check still applies to front-door and garage-entry events; a delayed
+phone-presence update can delay both stages. The office welcome never asks a
+question and uses `followup: false`. The kitchen question opens the normal
+listening window for one user answer, then gives one brief reply and returns to
+standby. Guest welcomes use the same office chime/pause sequence without questions
+or follow-up listening. Weather-pattern logic runs in Home Assistant, separately
+from the Pi runtime.
 
 `sensor.jarvis_welcome_weather_pattern` records Met.no's daily forecast condition
 and high temperature every thirty minutes. It compares today with the previous
@@ -1021,8 +1039,28 @@ members. It advances only when the Pi accepts the welcome into its queue. Daily
 history and the cooldown persist across Home Assistant restarts. Missing or stale
 weather data produces no ordinary weather note, and a new installation needs two
 previous days of history. Existing severe-weather alerts retain priority. With
-no relevant events, the welcome is just the greeting, without an all-clear report.
+no relevant events, the office welcome omits an all-clear report and keeps the
+existing randomized greeting/house-check selection. The later kitchen stage
+randomly selects from twelve questions about the person's day, feelings,
+highlights, relaxing, help, weather, or news; severe weather
+suppresses this casual question. The kitchen Echo's follow-up listening window
+accepts a spoken answer without another wake word; silence returns it to standby.
+The one-reply request includes the spoken question, so answers such as "yes"
+to a weather or news offer have context. Speculative partial requests are disabled
+for this turn so the question and final answer reach Pasture together.
 
 The Home Assistant configuration uses `jarvis_weather_pattern.yaml`, included
 under `template:`, plus the helper above and `script.jarvis_welcome_home`. These
 are Home Assistant configuration files, not settings in the Pi's `config.py`.
+
+`script.jarvis_kitchen_arrival_conversation` supplies the kitchen prompt.
+The twelve question texts are saved in `home_assistant/kitchen_questions.json`.
+This is a reference list; changes must also be applied to the kitchen script in
+Home Assistant.
+`script.jarvis_arrival_walkthrough_test` is a manually armed single-run test:
+a closed-to-open main-door transition triggers the office chime, two-second gap,
+welcome, and later kitchen question. Both household phones must already have been
+home for sixty seconds, with no pending arrival. Real arrivals remain handled by
+the normal automation and do not consume the test. The manual test does not alter
+arrival records or advance the welcome-weather cooldown. The test stops after
+one delivery or a twenty-minute wait timeout; turn off the script to cancel early.

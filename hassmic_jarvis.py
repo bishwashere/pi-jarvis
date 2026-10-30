@@ -169,8 +169,17 @@ class Announcements:
             return {'ok': False, 'error': f'unknown command: {command}'}
         if not text:
             return {'ok': False, 'error': 'text, instruction, or message is required'}
+        followup = payload.get('followup', True)
+        if type(followup) is not bool:
+            return {'ok': False, 'error': 'followup must be a boolean'}
+        options = {key: payload.get(key, False) for key in ('one_reply', 'chime')}
+        if any(type(value) is not bool for value in options.values()):
+            return {'ok': False, 'error': 'one_reply and chime must be booleans'}
         try:
-            self.pending.put_nowait(text)
+            item = text if followup else {'text': text, 'followup': False}
+            if any(options.values()):
+                item = {'text': text, 'followup': followup, **options}
+            self.pending.put_nowait(item)
         except queue.Full:
             return {'ok': False, 'error': 'announcement queue is full'}
         voice_event('command_server_queued', text=text)
@@ -233,6 +242,8 @@ def serve(wire, transcribe, ask, synthesize, directory, *, max_turns=None, annou
     voice_event('hassmic_connected', status='standing_down' if paused else 'waiting_for_wake')
     log_loaded_wake_models(info)
     followup = False
+    one_reply = False
+    arrival_prompt = ''
     turns = 0
     waiting_logged = False
     while max_turns is None or turns < max_turns:
@@ -273,15 +284,22 @@ def serve(wire, transcribe, ask, synthesize, directory, *, max_turns=None, annou
             # with capture or an existing response on the single Echo socket.
             if not wire.ready(.25):
                 try:
-                    text = announcements.pending.get_nowait()
+                    announcement = announcements.pending.get_nowait()
                 except queue.Empty:
                     continue
+                text = announcement if isinstance(announcement, str) else announcement['text']
+                listen_after = isinstance(announcement, str) or announcement['followup']
+                one_reply = not isinstance(announcement, str) and announcement.get('one_reply', False)
+                arrival_prompt = text if one_reply else ''
                 voice_event('command_server_instruction_started', text=text)
                 try:
                     path = synthesize(text, str(Path(directory) / 'announcement.wav'))
-                    play(wire, path, followup=True)
+                    if not isinstance(announcement, str) and announcement.get('chime', False):
+                        from announcement_audio import prepend_chime
+                        path = prepend_chime(path)
+                    play(wire, path, followup=listen_after)
                     voice_event('command_server_instruction_finished', text=text)
-                    followup = True
+                    followup = listen_after
                 except Exception as exc:
                     # Playback might already have happened. Do not replay an
                     # uncertain announcement after reconnecting.
@@ -302,6 +320,7 @@ def serve(wire, transcribe, ask, synthesize, directory, *, max_turns=None, annou
             followup = False
             continue
         if not followup:
+            one_reply = False
             # This satellite hardcodes wake_word_name='alexa', even with MWW.
             # Log the actual trigger without presenting that field as evidence.
             voice_event('wake_heard', detector='on_echo', source='run-pipeline')
@@ -313,7 +332,7 @@ def serve(wire, transcribe, ask, synthesize, directory, *, max_turns=None, annou
                     no_speech_seconds=no_speech_seconds)
         with ExitStack() as turn_resources:
             upstream = None
-            if streaming_server is not None and STREAMING_INPUT_ENABLED:
+            if streaming_server is not None and STREAMING_INPUT_ENABLED and not one_reply:
                 from streaming_input import StreamingInput
                 upstream = turn_resources.enter_context(StreamingInput())
             clip = Path(directory) / 'command.wav'
@@ -359,42 +378,43 @@ def serve(wire, transcribe, ask, synthesize, directory, *, max_turns=None, annou
                 voice_event('stand_down_command', kind='followup' if followup else 'initial', text=text)
                 start_stand_down(STAND_DOWN_SECONDS)
                 followup = False
-                confirmation = ('Standing down for one hour.' if STAND_DOWN_SECONDS == 3600
-                                else f'Standing down for {STAND_DOWN_SECONDS} seconds.')
-                try:
-                    path = synthesize(confirmation, str(Path(directory) / 'reply.wav'))
-                    play(wire, path, followup=False)
-                finally:
-                    wire.send('pause-satellite')
-                    paused = True
-                    waiting_logged = False
-                    voice_event('hassmic_stand_down_paused', seconds=stand_down_remaining())
+                wire.send('error', {'code': 'stt-no-text-recognized'})
+                wire.send('pause-satellite')
+                paused = True
+                waiting_logged = False
+                voice_event('hassmic_stand_down_paused', seconds=stand_down_remaining())
                 continue
             if is_end_session_command(text):
-                from call_agent_api import start_new_pasture_session
                 voice_event('session_end_command', kind='followup' if followup else 'initial', text=text)
-                # End capture on the Echo before doing any potentially slow API reset.
+                # Local stop: no spoken acknowledgement or backend session-reset request.
                 wire.send('error', {'code': 'stt-no-text-recognized'})
                 followup = False
-                start_new_pasture_session()
                 continue
+            reply_text = text
+            if one_reply:
+                reply_text = (f'Arrival greeting just spoken: {arrival_prompt}\n'
+                              f'User response: {text}\n\n'
+                              '[Arrival conversation: answer this request briefly, then finish. '
+                               'Do not ask a follow-up question.]')
+            listen_after_reply = not one_reply
             if streaming_server is not None:
                 from streaming_reply import stream_reply
-                stream_reply(wire, text, synthesize, directory,
+                stream_reply(wire, reply_text, synthesize, directory,
+                             **({'followup': False} if one_reply else {}),
                              **({'events': upstream.events} if upstream else {}))
                 turns += 1
-                followup = True
+                followup = listen_after_reply
                 continue
-            reply = ask(text)
+            reply = ask(reply_text)
             ready = time.monotonic()
             voice_event('hassmic_response_received', turn=turns + 1)
             path = synthesize(reply['reply'], str(Path(directory) / 'reply.wav'))
             voice_event('hassmic_reply', turn=turns + 1, text=reply['reply'])
             voice_event('hassmic_playback_sent', response_to_send_seconds=f'{time.monotonic() - ready:.3f}')
-            play(wire, path, followup=True)
+            play(wire, path, followup=listen_after_reply)
             voice_event('hassmic_playback_finished', turn=turns + 1)
             turns += 1
-            followup = True
+            followup = listen_after_reply
 
 
 def run_connected(host, port, transcribe, ask, synthesize, directory, announcements,

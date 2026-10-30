@@ -1,11 +1,12 @@
 import random
+import re
 import queue
 import threading
 import time
 
 import requests
 
-from call_agent_api import ask_pasture, check_agent_health, start_new_pasture_session
+from call_agent_api import ask_pasture, check_agent_health
 from config import (
     API_RETRY_COUNT,
     CHECKING_REPLY_DELAY_SECONDS,
@@ -106,7 +107,9 @@ def normalize_command(text: str) -> str:
 
 
 def is_end_session_command(text: str) -> bool:
-    return normalize_control_command(text) in END_SESSION_PHRASES
+    alternatives = '|'.join(re.escape(p) for p in sorted(END_SESSION_PHRASES, key=len, reverse=True))
+    return re.fullmatch(rf'(?:{alternatives})(?:\s+(?:and\s+)?(?:{alternatives}))*',
+                        normalize_control_command(text)) is not None
 
 
 def normalize_control_command(text: str) -> str:
@@ -156,13 +159,7 @@ def start_stand_down(seconds: int = STAND_DOWN_SECONDS) -> float:
 
 def handle_stand_down_command(model) -> bool:
     start_stand_down()
-    speak("Standing down for one hour.", model=model, kind="stand_down")
     return False
-
-
-def end_pasture_session_quietly():
-    if not start_new_pasture_session():
-        print("Could not reset Pasture session; returning to wake word mode.", flush=True)
 
 
 def speak(text: str, model=None, kind: str = "speech"):
@@ -387,12 +384,9 @@ def process_command_loop(
         if is_end_session_command(command):
             voice_event("session_end_command", kind="initial", text=command)
             print("End-session command heard. Returning to wake word mode.", flush=True)
-            end_pasture_session_quietly()
-            confirm_standby_if_served(served_turn, model)
             return
 
         if is_stand_down_command(command):
-            confirm_command_captured()
             voice_event("stand_down_command", kind="initial", text=command)
             handle_stand_down_command(model)
             return
@@ -459,8 +453,6 @@ def process_command_loop(
             if is_end_session_command(followup):
                 voice_event("session_end_command", kind="followup", text=followup)
                 print("End-session follow-up heard. Returning to wake word mode.", flush=True)
-                end_pasture_session_quietly()
-                confirm_standby_if_served(served_turn, model)
                 command = ""
                 return
 
@@ -472,7 +464,6 @@ def process_command_loop(
                 break
 
             if is_stand_down_command(followup):
-                confirm_command_captured()
                 voice_event("stand_down_command", kind="followup", text=followup)
                 handle_stand_down_command(model)
                 command = ""

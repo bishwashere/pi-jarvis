@@ -75,6 +75,10 @@ def test_router_target_broadcast_validation_and_atomic_queueing():
     assert router.handle({'text':'both','broadcast':True})['device_ids']==['echo-1','echo-2']
     assert [queues['echo-1'].pending.get(),queues['echo-1'].pending.get()]==['default','both']
     assert [queues['echo-2'].pending.get(),queues['echo-2'].pending.get()]==['second','both']
+    assert router.handle({'text':'quiet welcome','device_id':'echo-2','followup':False})['ok']
+    assert queues['echo-2'].pending.get() == {'text':'quiet welcome','followup':False}
+    assert not router.handle({'text':'invalid','broadcast':True,'followup':'false'})['ok']
+    assert all(queue.pending.empty() for queue in queues.values())
     for target in [{'device_id':'unknown'},{'device_ids':['echo-1','echo-1']},
                    {'broadcast':False},{'broadcast':True,'device_id':'echo-1'}]:
         assert not router.handle({'text':'reject',**target})['ok']

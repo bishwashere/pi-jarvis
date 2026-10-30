@@ -161,6 +161,12 @@ class AnnouncementRouter:
         text = str(payload.get('text') or payload.get('instruction') or payload.get('message') or '').strip()
         if not text:
             return {'ok':False,'error':'text, instruction, or message is required'}
+        followup = payload.get('followup', True)
+        if type(followup) is not bool:
+            return {'ok':False,'error':'followup must be a boolean'}
+        options = {key: payload.get(key, False) for key in ('one_reply', 'chime')}
+        if any(type(value) is not bool for value in options.values()):
+            return {'ok':False,'error':'one_reply and chime must be booleans'}
         selectors = sum(key in payload for key in ('device_id','device_ids','broadcast'))
         if selectors > 1:
             return {'ok':False,'error':'Use only one of device_id, device_ids, or broadcast'}
@@ -181,5 +187,5 @@ class AnnouncementRouter:
             if any(self.queues[i].pending.full() for i in targets):
                 return {'ok':False,'error':'An Echo announcement queue is full; nothing queued'}
             for identifier in targets:
-                self.queues[identifier].handle({'text':text})
+                self.queues[identifier].handle({'text':text, 'followup':followup, **options})
         return {'ok':True,'queued':True,'device_ids':targets,'text':text}

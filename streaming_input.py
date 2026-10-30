@@ -34,8 +34,14 @@ class StreamingInput:
 
     def partial(self, text):
         from speech_to_text import clean_command_transcript
+        from conversation_loop import (is_end_session_command, is_stand_down_command,
+                                       normalize_control_command, STAND_DOWN_PHRASES)
         text = clean_command_transcript(text, log=False)
         if not text:
+            return
+        control = normalize_control_command(text)
+        if (is_end_session_command(text) or is_stand_down_command(text) or
+                any(phrase.startswith(control + ' ') for phrase in STAND_DOWN_PHRASES)):
             return
         with self.condition:
             if self.closed or self.committed or text == self.last_text or self.error:
