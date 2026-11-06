@@ -1016,8 +1016,9 @@ no-speech waits, 1.5-second end-of-speech pause and streaming paths are preserve
 
 The deployed Home Assistant household arrival flow gives a short welcome on
 Echo 2 (currently the office speaker): queue a chime at entry, pause two seconds
-after the chime, then speak the welcome. Around ten seconds after entry it asks
-a conversational question on Echo 1 (kitchen). The existing
+after the chime, then speak the welcome. Around ten seconds after entry it has
+a 50% chance to ask a conversational question on Echo 1 (kitchen); otherwise that
+stage stays silent without opening a listening window. The existing
 arrival check still applies to front-door and garage-entry events; a delayed
 phone-presence update can delay both stages. The office welcome never asks a
 question and uses `followup: false`. The kitchen question opens the normal
@@ -1053,7 +1054,9 @@ The Home Assistant configuration uses `jarvis_weather_pattern.yaml`, included
 under `template:`, plus the helper above and `script.jarvis_welcome_home`. These
 are Home Assistant configuration files, not settings in the Pi's `config.py`.
 
-`script.jarvis_kitchen_arrival_conversation` supplies the kitchen prompt.
+`script.jarvis_kitchen_arrival_conversation` supplies the kitchen prompt. After
+the severe-weather check, a `{{ [true, false] | random }}` template condition
+independently skips half of calls on average, including manual test calls.
 The twelve question texts are saved in `home_assistant/kitchen_questions.json`.
 This is a reference list; changes must also be applied to the kitchen script in
 Home Assistant.
@@ -1064,3 +1067,65 @@ home for sixty seconds, with no pending arrival. Real arrivals remain handled by
 the normal automation and do not consume the test. The manual test does not alter
 arrival records or advance the welcome-weather cooldown. The test stops after
 one delivery or a twenty-minute wait timeout; turn off the script to cancel early.
+
+#### Local quick replies and arrival-prepared briefings
+
+Set `JARVIS_QUICK_REPLIES_ENABLED=true` to enable text-only quick replies and
+prepared briefings. `quick_replies.json` contains short rotating greetings,
+check-ins, thanks, and 50 jokes. Matches use whole normalized phrases; combined
+requests still go to Pasture. Replies avoid an immediate repeat. Library edits
+are loaded on the next request without restarting; invalid edits retain the last
+valid library. `JARVIS_QUICK_REPLIES_PATH` can select another library.
+
+Home Assistant can POST `{"command":"prepare_briefings"}` to the existing
+`/command` endpoint with the same authentication as announcements. This returns
+immediately and asks Pasture for news and weather in the background through the
+existing API, using separate preparation conversation IDs. Concurrent preparation
+requests are coalesced. Nothing is spoken by preparation, and there is no timer
+or periodic refresh. Connect this command only to confirmed household arrivals,
+not guest welcomes or the manual arrival walkthrough.
+
+Prepared **text only** is saved in `runtime/cache/responses` (override with
+`JARVIS_RESPONSE_CACHE_DIR`). Common news/weather requests reuse it for three
+hours/one hour respectively, configured by `JARVIS_BRIEFING_NEWS_TTL` and
+`JARVIS_BRIEFING_WEATHER_TTL` in seconds. Missing, invalid, or expired entries use
+the normal backend path. Preparation failures retain older entries without
+extending their expiry. Every spoken answer uses the currently configured Piper
+voice; no reusable audio is stored by this feature. Follow-up requests include
+the preceding local answer for backend context.
+
+Streaming input withholds partial transcripts that match or are prefixes of
+these common requests. A misrecognized partial that already started an upstream
+request can still consume provisional backend work; the final local response
+never commits that request. Existing stop/stand-down controls retain priority.
+An authenticated `{"command":"reload_quick_replies"}` request explicitly reloads
+the library without fetching news/weather. Disable the feature with
+`JARVIS_QUICK_REPLIES_ENABLED=false` and restart Jarvis.
+
+The deployed **Jarvis - Prepare News and Weather on Household Arrival** automation
+is separate from the existing welcome flow. It watches the two existing
+`input_datetime.jarvis_last_arrival_*` helpers for a newly recorded arrival within
+two minutes. Resets to 1970, unchanged timestamps, and recovery from unavailable
+states do not trigger preparation. The reference is
+`home_assistant/prepare_briefings.yaml`. Its dedicated
+`rest_command.jarvis_prepare_briefings` uses the existing Pi command URL and
+`jarvis_command_server_token` secret with the JSON body above. No existing welcome
+automation or script needs modification. Reload RESTful Command after adding the
+new REST command, then save/enable the separate automation.
+
+Arrival preparation has a shared **three-hour cooldown** for both topics, including
+across Jarvis restarts. Repeated arrivals return `reason: cooldown` without a
+backend call. `JARVIS_BRIEFING_PREPARE_COOLDOWN` overrides its 10800-second duration.
+The cooldown starts when preparation is accepted, even if a backend request fails,
+to avoid repeated calls; it does not affect normal on-demand requests. Weather
+still expires after one hour, so a weather question after that uses the backend
+normally even during the arrival-preparation cooldown. Library reload bypasses
+this cooldown and does not reset it.
+
+Say **“update weather”** or **“update news”** (also “refresh weather/news”) to
+explicitly request a fresh Pasture briefing. These commands bypass saved answers
+and the arrival-preparation cooldown, speak the fresh text with the current voice,
+and replace that topic's cached text. They do not reset the arrival cooldown or
+refresh the other topic. A failed refresh reports that it could not update;
+it never presents an old cached answer as a fresh update. An older in-flight
+preparation cannot overwrite a newer explicit refresh.

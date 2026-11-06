@@ -1,0 +1,22 @@
+# Reference for the separate deployed automation; do not replace the welcome flow.
+alias: Jarvis - Prepare News and Weather on Household Arrival
+description: >-
+  Independently prepare text-only news and weather through Pasture when an existing
+  household arrival recorder updates Bishwas or Tika's arrival timestamp. No
+  announcement, no schedule, and no changes to the welcome automation.
+triggers:
+  - trigger: state
+    entity_id:
+      - input_datetime.jarvis_last_arrival_bishwas
+      - input_datetime.jarvis_last_arrival_tika
+conditions:
+  - condition: template
+    value_template: >-
+      {{ trigger.from_state is not none and trigger.to_state is not none
+         and trigger.from_state.state not in ['unknown', 'unavailable']
+         and trigger.to_state.state != trigger.from_state.state
+         and 0 <= as_timestamp(now()) - as_timestamp(trigger.to_state.state, 0) <= 120 }}
+actions:
+  - action: rest_command.jarvis_prepare_briefings
+    data: {}
+mode: single

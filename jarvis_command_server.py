@@ -117,7 +117,10 @@ def start_command_server(command_handler):
                 return
 
             try:
-                result = command_handler(payload)
+                from quick_responses import handle_cache_command
+                result = handle_cache_command(payload)
+                if result is None:
+                    result = command_handler(payload)
                 status = 200 if result.get("ok", True) else 400
                 self.send_json(status, result)
             except Exception as e:

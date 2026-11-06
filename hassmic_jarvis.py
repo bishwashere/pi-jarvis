@@ -244,6 +244,7 @@ def serve(wire, transcribe, ask, synthesize, directory, *, max_turns=None, annou
     followup = False
     one_reply = False
     arrival_prompt = ''
+    local_context = None
     turns = 0
     waiting_logged = False
     while max_turns is None or turns < max_turns:
@@ -291,6 +292,7 @@ def serve(wire, transcribe, ask, synthesize, directory, *, max_turns=None, annou
                 listen_after = isinstance(announcement, str) or announcement['followup']
                 one_reply = not isinstance(announcement, str) and announcement.get('one_reply', False)
                 arrival_prompt = text if one_reply else ''
+                local_context = None
                 voice_event('command_server_instruction_started', text=text)
                 try:
                     path = synthesize(text, str(Path(directory) / 'announcement.wav'))
@@ -321,6 +323,7 @@ def serve(wire, transcribe, ask, synthesize, directory, *, max_turns=None, annou
             continue
         if not followup:
             one_reply = False
+            local_context = None
             # This satellite hardcodes wake_word_name='alexa', even with MWW.
             # Log the actual trigger without presenting that field as evidence.
             voice_event('wake_heard', detector='on_echo', source='run-pipeline')
@@ -332,7 +335,7 @@ def serve(wire, transcribe, ask, synthesize, directory, *, max_turns=None, annou
                     no_speech_seconds=no_speech_seconds)
         with ExitStack() as turn_resources:
             upstream = None
-            if streaming_server is not None and STREAMING_INPUT_ENABLED and not one_reply:
+            if streaming_server is not None and STREAMING_INPUT_ENABLED and not one_reply and not local_context:
                 from streaming_input import StreamingInput
                 upstream = turn_resources.enter_context(StreamingInput())
             clip = Path(directory) / 'command.wav'
@@ -390,7 +393,23 @@ def serve(wire, transcribe, ask, synthesize, directory, *, max_turns=None, annou
                 wire.send('error', {'code': 'stt-no-text-recognized'})
                 followup = False
                 continue
+            from quick_responses import local_reply, normalize, REFRESH_PHRASES
+            cached = local_reply(text) if not one_reply or normalize(text) in REFRESH_PHRASES else None
+            if cached:
+                if upstream:
+                    upstream.close()
+                path = synthesize(cached['reply'], str(Path(directory) / 'reply.wav'))
+                play(wire, path, followup=not one_reply)
+                local_context = (text, cached['reply'])
+                turns += 1
+                followup = not one_reply
+                continue
             reply_text = text
+            if local_context and not one_reply:
+                reply_text = (f'Previous user request: {local_context[0]}\n'
+                              f'Jarvis answered locally: {local_context[1]}\n'
+                              f'Current user request: {text}')
+            local_context = None
             if one_reply:
                 reply_text = (f'Arrival greeting just spoken: {arrival_prompt}\n'
                               f'User response: {text}\n\n'

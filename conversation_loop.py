@@ -1,3 +1,4 @@
+from contextvars import ContextVar
 import random
 import re
 import queue
@@ -268,7 +269,21 @@ def get_followup_until(model, seconds: int) -> str:
     return ""
 
 
+_local_reply_context = ContextVar("local_reply_context", default=None)
+
+
 def ask_and_speak(user_text: str, model, *, announce_waiting: bool = True) -> bool:
+    from quick_responses import local_reply
+    cached = local_reply(user_text)
+    if cached:
+        speak(cached['reply'], model=model, kind='local_answer')
+        _local_reply_context.set((user_text, cached['reply']))
+        return True
+    previous = _local_reply_context.get()
+    if previous:
+        user_text = (f'Previous user request: {previous[0]}\n'
+                     f'Jarvis answered locally: {previous[1]}\nCurrent user request: {user_text}')
+        _local_reply_context.set(None)
     announce_waiting = announce_waiting and WAITING_ANNOUNCEMENTS
     for attempt in range(API_RETRY_COUNT):
         try:
@@ -494,6 +509,7 @@ def process_command_loop(
 
 
 def handle_conversation(model):
+    _local_reply_context.set(None)
     clear_audio_queue()
     wake_context_prompt = speak_wake_reply(model=model)
 
@@ -520,6 +536,7 @@ def get_pending_local_command():
 
 
 def handle_command_server_instruction(model, payload: dict):
+    _local_reply_context.set(None)
     text = str(payload.get("text") or "").strip()
     if not text:
         return

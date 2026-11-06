@@ -416,3 +416,16 @@ VOICE_PROFILE_DIR = _env_path("JARVIS_VOICE_PROFILE_DIR", Path(LOG_DIR) / "voice
 HASSMIC_PORT = int(os.environ.get("JARVIS_HASSMIC_PORT", "16700"))
 if not 1 <= HASSMIC_PORT <= 65535:
     raise ValueError("JARVIS_HASSMIC_PORT must be between 1 and 65535")
+
+# Local rotating replies and arrival-prepared news/weather. No periodic API calls.
+QUICK_REPLIES_ENABLED = _env_bool('JARVIS_QUICK_REPLIES_ENABLED', False)
+QUICK_REPLIES_PATH = _env_path('JARVIS_QUICK_REPLIES_PATH', PROJECT_DIR / 'quick_replies.json')
+RESPONSE_CACHE_DIR = _env_path('JARVIS_RESPONSE_CACHE_DIR', RUNTIME_DIR / 'cache' / 'responses')
+BRIEFING_NEWS_TTL = int(os.environ.get('JARVIS_BRIEFING_NEWS_TTL', '10800'))
+BRIEFING_WEATHER_TTL = int(os.environ.get('JARVIS_BRIEFING_WEATHER_TTL', '3600'))
+if BRIEFING_NEWS_TTL <= 0 or BRIEFING_WEATHER_TTL <= 0:
+    raise ValueError('Briefing cache lifetimes must be positive')
+
+BRIEFING_PREPARE_COOLDOWN = int(os.environ.get('JARVIS_BRIEFING_PREPARE_COOLDOWN', '10800'))
+if BRIEFING_PREPARE_COOLDOWN <= 0:
+    raise ValueError('Briefing preparation cooldown must be positive')

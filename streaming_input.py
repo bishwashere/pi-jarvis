@@ -39,6 +39,9 @@ class StreamingInput:
         text = clean_command_transcript(text, log=False)
         if not text:
             return
+        from quick_responses import cache
+        if cache.hold_partial(text):
+            return
         control = normalize_control_command(text)
         if (is_end_session_command(text) or is_stand_down_command(text) or
                 any(phrase.startswith(control + ' ') for phrase in STAND_DOWN_PHRASES)):

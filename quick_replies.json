@@ -1,0 +1,132 @@
+{
+  "checkin": {
+    "phrases": [
+      "how are you",
+      "how are you doing",
+      "how s it going",
+      "are you good",
+      "how do you feel"
+    ],
+    "replies": [
+      "Doing well. How about you?",
+      "All good here. What’s on your mind?",
+      "I’m here and ready to help.",
+      "Doing great. Good to hear from you."
+    ]
+  },
+  "hello": {
+    "phrases": [
+      "hello",
+      "hi",
+      "hey jarvis",
+      "hello jarvis"
+    ],
+    "replies": [
+      "Hello. What can I help with?",
+      "Hi there.",
+      "Hey. What’s on your mind?"
+    ]
+  },
+  "morning": {
+    "phrases": [
+      "good morning"
+    ],
+    "replies": [
+      "Good morning. Hope your day is off to a good start.",
+      "Morning. What’s on the agenda?",
+      "Good morning. Nice to hear from you."
+    ]
+  },
+  "evening": {
+    "phrases": [
+      "good evening"
+    ],
+    "replies": [
+      "Good evening. How’s your day been?",
+      "Good evening. What can I help with?"
+    ]
+  },
+  "night": {
+    "phrases": [
+      "good night"
+    ],
+    "replies": [
+      "Good night. Sleep well.",
+      "Good night. Rest well."
+    ]
+  },
+  "gratitude": {
+    "phrases": [
+      "thanks",
+      "thank you",
+      "thanks jarvis",
+      "thank you jarvis"
+    ],
+    "replies": [
+      "You’re welcome.",
+      "Happy to help.",
+      "Anytime."
+    ]
+  },
+  "joke": {
+    "phrases": [
+      "tell me a joke",
+      "tell a joke",
+      "say a joke",
+      "make me laugh",
+      "tell me another joke"
+    ],
+    "replies": [
+      "Why did the computer get cold? It left its Windows open.",
+      "Why did the bicycle fall over? It was two tired.",
+      "What do you call a bear with no teeth? A gummy bear.",
+      "Why can't your nose be twelve inches long? Then it would be a foot.",
+      "What do you call cheese that isn't yours? Nacho cheese.",
+      "Why did the scarecrow win an award? He was outstanding in his field.",
+      "What do you call a sleeping bull? A bulldozer.",
+      "Why did the math book look sad? It had too many problems.",
+      "What do you call a fish wearing a bow tie? Sofishticated.",
+      "Why don't eggs tell jokes? They might crack each other up.",
+      "What do you call a dinosaur with an extensive vocabulary? A thesaurus.",
+      "Why did the cookie visit the doctor? It felt crummy.",
+      "What kind of room has no doors? A mushroom.",
+      "What do you call a factory that makes okay products? A satisfactory.",
+      "Why did the tomato blush? It saw the salad dressing.",
+      "What do you call a boomerang that won't come back? A stick.",
+      "Why did the golfer bring two pairs of pants? In case he got a hole in one.",
+      "What do you call a pile of cats? A meowtain.",
+      "How do trees get online? They log in.",
+      "Why was the calendar nervous? Its days were numbered.",
+      "What did one wall say to the other? I'll meet you at the corner.",
+      "Why did the coffee file a police report? It got mugged.",
+      "What do you call a belt made of watches? A waist of time.",
+      "How does the moon cut its hair? Eclipse it.",
+      "Why did the orange stop rolling? It ran out of juice.",
+      "What do you call an alligator in a vest? An investigator.",
+      "Why don't skeletons fight each other? They don't have the guts.",
+      "What do you call a dog magician? A labracadabrador.",
+      "Why was the broom late? It overswept.",
+      "What did the ocean say to the beach? Nothing. It just waved.",
+      "Why did the picture go to jail? It was framed.",
+      "What do you call a cow with no legs? Ground beef.",
+      "How do you organize a space party? You planet.",
+      "Why did the banana go to the doctor? It wasn't peeling well.",
+      "What do you call a snowman in summer? A puddle.",
+      "Why was six afraid of seven? Because seven ate nine.",
+      "What kind of shoes do ninjas wear? Sneakers.",
+      "Why did the belt get arrested? It held up a pair of pants.",
+      "What do you call a duck that gets all A's? A wise quacker.",
+      "Why was the stadium so cool? It was full of fans.",
+      "What did the zero say to the eight? Nice belt.",
+      "Why did the music teacher need a ladder? To reach the high notes.",
+      "What do you call a pig that knows karate? A pork chop.",
+      "Why did the computer go to the doctor? It had a virus.",
+      "How does a penguin build its house? Igloos it together.",
+      "What kind of key opens a banana? A monkey.",
+      "Why did the teddy bear skip dessert? It was stuffed.",
+      "What do you call a rabbit with fleas? Bugs Bunny.",
+      "Why are elevator jokes so good? They work on many levels.",
+      "What do you call a group of musical whales? An orca-stra."
+    ]
+  }
+}

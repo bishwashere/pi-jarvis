@@ -148,3 +148,20 @@ def test_invalid_limits_rejected_in_fresh_process(key,value):
         cwd=Path(__file__).resolve().parents[1],env=env,capture_output=True,text=True)
     assert result.returncode!=0
     assert key in result.stderr
+
+
+@pytest.mark.parametrize('authorized', [True, False])
+def test_prepare_briefings_requires_existing_auth(handler_factory, monkeypatch, authorized):
+    import quick_responses
+    prepare = Mock(return_value={'ok': True, 'queued': True})
+    monkeypatch.setattr(quick_responses, 'handle_cache_command', prepare)
+    body = b'{"command":"prepare_briefings"}'
+    handler, announce = handler_factory([('Content-Length', str(len(body)))], body, authorized)
+    handler.do_POST()
+    announce.assert_not_called()
+    if authorized:
+        prepare.assert_called_once_with({'command': 'prepare_briefings'})
+        assert handler.send_json.call_args.args[0] == 200
+    else:
+        prepare.assert_not_called()
+        assert handler.send_json.call_args.args[0] == 401
